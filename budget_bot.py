@@ -7,7 +7,7 @@ from telegram import Update
 from telegram.ext import (ApplicationBuilder, CommandHandler, ContextTypes,
                           MessageHandler, filters)
 
-from mylib import DataBase, Spending
+import mylib
 
 load_dotenv()
 
@@ -29,7 +29,7 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 WHITELIST = os.environ.get('WHITE_LIST').split(' ')
 
 
-def get_query_list(query_str):
+def get_query_list(query_str: str) -> list:
     if ',' in query_str:
         query_list = query_str.split(',')
     else:
@@ -39,8 +39,8 @@ def get_query_list(query_str):
 
 async def telegram_help_text(update: Update,
                              context: ContextTypes.DEFAULT_TYPE) -> None:
-    '''This function is used to send help message.
-    '''
+    """This function is used to send help message.
+    """
     user_first_name = update.effective_user.first_name
     text = f'''И так, {user_first_name},
 На данный момент доступен только один вариант ввода комманд.
@@ -52,16 +52,25 @@ async def telegram_help_text(update: Update,
 Для ввода используется следующий формат:
 [наименование] [источник] [сумма]
 Если трат несколько, то нужно использовать запятую между каждым блоком.
-При этом в каждом блоке может быть только одно наименование!
-[наименование1] [источник1] [сумма1], [наименованиеN] [источникN] [суммаN]
+Если наименование составное, например, "сыр колбаса вода",
+то запятая не ставится!
+Пример:
+сыр колбаса вода карта 1000, овощи нал 800
+Результат:
+Наименование: Сыр колбаса вода
+Источник: Карта
+Сумма: 1000
+Наименование: Овощи
+Источник: Наличные
+Сумма: 800
 '''
     await update.message.reply_text(text)
 
 
 async def telegram_start_text(update: Update,
                               context: ContextTypes.DEFAULT_TYPE) -> None:
-    '''This function is used to send welcome messages.
-    '''
+    """This function is used to send welcome messages.
+    """
     user_first_name = update.effective_user.first_name
     text = f'''Привет, {user_first_name},
 Это бот для ведения сейного бюджета в google sheets с помощью telegram.
@@ -71,7 +80,7 @@ async def telegram_start_text(update: Update,
     await update.message.reply_text(text)
 
 
-def is_user_in_white_list(user_id):
+def is_user_in_white_list(user_id: str) -> bool:
     return user_id in WHITELIST
 
 
@@ -79,21 +88,24 @@ async def processor(update: Update,
                     context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     user_first_name = update.effective_user.first_name
+
     if is_user_in_white_list(str(chat_id)):
         query_str = re.sub(r'(\d+),(\d+)', r'\1.\2', update.message.text)
         query_list = get_query_list(query_str)
     else:
         text = '''Понимаю любопытсво, но это личная информация.
-Ответственный за ведение бюджета должен добавить ваш ID в список разрешенных.
+Необходимо добавить ваш ID в список разрешенных.
 Спасибо за понимание.'''
         await update.message.reply_text(text)
         return
+
     for query_str in query_list:
         try:
-            q_list = query_str.split(' ')
-            Spending.validate(q_list)
-            spending = Spending(q_list)
-            DataBase(spending, user_first_name).add_data_to_csv(data_path)
+            *name, source, amount = query_str.split()
+            q_list = [' '.join(name), source, amount]
+            mylib.Spending.validate(q_list)
+            spending = mylib.Spending(q_list)
+            mylib.CsvDatabase(spending, user_first_name).add_data(data_path)
             text = f'''Данные успешно добавлены:
 {str(spending)}
 '''

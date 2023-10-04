@@ -34,7 +34,7 @@ class Spending:
 
     frmt_msg = '''
 Для добавления расходов необходимо использовать следующий формат
-[наименование траты - строка] [источник траты - строка] [сумма траты - число]
+[наименование траты - str] [источник траты - str] [сумма траты - str]
 '''
 
     def __init__(self, spending: str):
@@ -42,7 +42,8 @@ class Spending:
         Initializes an object of the Spending class.
 
         Args:
-            spending (list): Input data in the format [name, source, amount].
+            spending (list):
+                Input data in the format [name, source, amount].
         """
         self.__spending_date = datetime.now()
         self.__spending_name = spending[0]
@@ -62,12 +63,14 @@ class Spending:
             pass
         else:
             raise ValueError(
-                f'Первый параметр не может быть числом!{Spending.frmt_msg}')
+                f'Первый параметр не может быть числом!{Spending.frmt_msg}'
+            )
 
     @staticmethod
     def validate_source(spending_list) -> None:
         source = spending_list[1]
         all_sources = Spending.bank + Spending.card + Spending.cash
+
         if source not in all_sources:
             raise ValueError(f'Недействительный источник трат: {source}')
 
@@ -77,7 +80,8 @@ class Spending:
             float(spending_list[2])
         except ValueError:
             raise ValueError(
-                f'Третий параметр должен быть числом!{Spending.frmt_msg}')
+                f'Третий параметр должен быть числом!{Spending.frmt_msg}'
+            )
 
     @staticmethod
     def validate(spending_list) -> None:
@@ -131,18 +135,15 @@ class Spending:
 Сумма: {self.spending_cost}
 Дата: {self.spending_date.strftime('%d-%m-%Y')}'''
 
-# TODO 1. class DataBase(abc.ABC) сделать абстракным. В нем реализовать абстрактные методы:
-# TODO prepare_data и add_data @abc.abstractmethod
-# TODO 2. добавить class DataBaseCVC(DataBase)
 
-
-class DataBase(abc.ABC):
+class Database(abc.ABC):
     """
     Abstract class for working with expense data.
 
     Abstract methods:
-        __init__(self, spending: Spending, spender_name: str): Class constructor.
-        prepare_data(self): Prepares data for insartion to database.
+        __init__(self, spending: Spending,
+                 spender_name: str): Class constructor.
+        prepare_data(self): Prepares data for insertion to database.
         add_data_to_csv(self, **kwargs): Adds data to database.
     """
     @abc.abstractmethod
@@ -154,66 +155,75 @@ class DataBase(abc.ABC):
             spending (Spending): An object of the Spending class.
             spender_name (str): User's name.
         """
+        self._spending = spending
+        self._spender_name = spender_name
+
+    @abc.abstractmethod
+    def prepare_data(self):
+        '''Absract method for preparing data for insertion to database.
+        '''
         pass
 
     @abc.abstractmethod
-    def prepare_data(self) -> list:
-        '''Absract method for preparing data for insartion to database.'''
-        pass
-
-    @abc.abstractmethod
-    def add_data(self, **kwargs) -> None:
+    def add_data(self, **kwargs):
         '''Absract method for adding data to database.'''
         pass
 
 
-class CsvDataBase(DataBase):
+class CsvDatabase(Database):
     """
     Class for working with expense data.
 
     Abstract methods:
-        __init__(self, spending: Spending, spender_name: str): Class constructor.
+        __init__(self,
+                spending: Spending,
+                spender_name: str): Class constructor.
         prepare_data(self): Prepares data for CSV writing.
         add_datav(self, csv_file_path): Adds data to a CSV file.
     """
 
     def __init__(self, spending: Spending, spender_name: str):
         """
-        Initializes an object of the DataBase class.
+        Initializes an object of the CsvDatabase class.
 
         Args:
             spending (Spending): An object of the Spending class.
             spender_name (str): User's name.
         """
-        self.__spending = spending
-        self.__spender_name = spender_name
-        self.__spending_name = self.__spending.spending_name
-        self.__spending_source = self.__spending.spending_source
-        self.__spending_cost = self.__spending.spending_cost
-        self.__spending_date = self.__spending.spending_date
-        self.__spending_time = self.__spending.get_spending_time()
+        super().__init__(spending, spender_name)
 
     def prepare_data(self) -> list:
-        spending_year = self.__spending.get_spending_ymdw('year')
-        spending_month = self.__spending.get_spending_ymdw('month')
-        spending_day = self.__spending.get_spending_ymdw('day')
-        spending_weekday = self.__spending.get_spending_ymdw('weekday')
-        return [self.__spending_name,
-                self.__spending_source,
-                self.__spending_cost,
-                self.__spending_time,
-                self.__spending_date,
-                spending_year,
-                spending_month,
-                spending_day,
-                spending_weekday,
-                self.__spender_name]
+        spending_year = self._spending.get_spending_ymdw('year')
+        spending_month = self._spending.get_spending_ymdw('month')
+        spending_day = self._spending.get_spending_ymdw('day')
+        spending_weekday = self._spending.get_spending_ymdw('weekday')
+        return [
+            self._spending.spending_name,
+            self._spending.spending_source,
+            self._spending.spending_cost,
+            self._spending.get_spending_time(),
+            self._spending.spending_date,
+            spending_year,
+            spending_month,
+            spending_day,
+            spending_weekday,
+            self._spender_name
+        ]
 
-    def add_data(self, csv_file_path) -> None:
-        data = self.prepare_data_for_csv()
-        with open(csv_file_path,
-                  mode='a',
-                  newline='',
-                  encoding='utf-8-sig') as file:
-            writer = csv.writer(file)
-            writer.writerow(data)
+    def add_data(self, csv_file_path: str) -> None:
+        data = self.prepare_data()
+        try:
+            with open(
+                csv_file_path,
+                mode='a',
+                newline='',
+                encoding='utf-8-sig'
+            ) as file:
+                writer = csv.writer(file)
+                writer.writerow(data)
+        except FileNotFoundError:
+            raise FileNotFoundError(f'Нет такого файла: {csv_file_path}')
+        except PermissionError:
+            raise PermissionError(f'Нет доступа к файлу: {csv_file_path}')
+        except Exception as error:
+            raise error
