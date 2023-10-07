@@ -39,8 +39,7 @@ def get_query_list(query_str: str) -> list:
 
 async def telegram_help_text(update: Update,
                              context: ContextTypes.DEFAULT_TYPE) -> None:
-    """This function is used to send help message.
-    """
+    """Send help message to the user."""
     user_first_name = update.effective_user.first_name
     text = f'''И так, {user_first_name},
 На данный момент доступен только один вариант ввода комманд.
@@ -69,8 +68,7 @@ async def telegram_help_text(update: Update,
 
 async def telegram_start_text(update: Update,
                               context: ContextTypes.DEFAULT_TYPE) -> None:
-    """This function is used to send welcome messages.
-    """
+    """Send welcome messages to the user."""
     user_first_name = update.effective_user.first_name
     text = f'''Привет, {user_first_name},
 Это бот для ведения сейного бюджета в google sheets с помощью telegram.

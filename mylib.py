@@ -4,14 +4,17 @@ from datetime import datetime, time
 
 
 class Spending:
-    """
-    Class to represent information about expenses.
+    """Class to represent information about expenses.
 
     Attributes:
-        bank (list): List of keywords for bank expenses.
-        card (list): List of keywords for card expenses.
-        cash (list): List of keywords for cash expenses.
-        frmt_msg (str): Message format for correct input.
+        bank: list
+            List of keywords for bank expenses
+        card: list
+            List of keywords for card expenses
+        cash: list
+            List of keywords for cash expenses
+        frmt_msg: str
+            Message with correct input example
 
     Methods:
         __init__(self, spending: str): Class constructor.
@@ -28,22 +31,22 @@ class Spending:
         get_spending_ymdw(self, flag: str): Returns date and time components.
         __str__(self): Returns a string representation of the expense.
     """
+
     bank = ['чек', 'чеки', 'банк', 'check', 'bank']
     card = ['карта', 'кредитка', 'ашрай', 'card', 'credit']
     cash = ['нал', 'наличные', 'кэш', 'кеш', 'cash', 'money']
-
     frmt_msg = '''
 Для добавления расходов необходимо использовать следующий формат
 [наименование траты - str] [источник траты - str] [сумма траты - str]
 '''
 
-    def __init__(self, spending: str):
+    def __init__(self, spending: list):
         """
         Initializes an object of the Spending class.
 
-        Args:
-            spending (list):
-                Input data in the format [name, source, amount].
+        Parameters:
+        spending: list
+            List of data to be added in the format [name, source, amount].
         """
         self.__spending_date = datetime.now()
         self.__spending_name = spending[0]
@@ -137,8 +140,7 @@ class Spending:
 
 
 class Database(abc.ABC):
-    """
-    Abstract class for working with expense data.
+    """Abstract class for working with expense data.
 
     Abstract methods:
         __init__(self, spending: Spending,
@@ -151,9 +153,10 @@ class Database(abc.ABC):
         """
         Initializes an object of the DataBase class.
 
-        Args:
-            spending (Spending): An object of the Spending class.
-            spender_name (str): User's name.
+        Parameters:
+        spending: An object of the Spending class
+        spender_name: str
+            User's name.
         """
         self._spending = spending
         self._spender_name = spender_name
@@ -171,24 +174,24 @@ class Database(abc.ABC):
 
 
 class CsvDatabase(Database):
-    """
-    Class for working with expense data.
+    """Class for adding expense data to a CSV file.
 
-    Abstract methods:
-        __init__(self,
-                spending: Spending,
-                spender_name: str): Class constructor.
-        prepare_data(self): Prepares data for CSV writing.
-        add_datav(self, csv_file_path): Adds data to a CSV file.
+    Methods:
+    __init__(self,
+            spending: Spending,
+            spender_name: str): Class constructor.
+    prepare_data(self): Prepares data for CSV writing.
+    add_datav(self, csv_file_path): Adds data to a CSV file.
     """
 
     def __init__(self, spending: Spending, spender_name: str):
         """
         Initializes an object of the CsvDatabase class.
 
-        Args:
-            spending (Spending): An object of the Spending class.
-            spender_name (str): User's name.
+        Parameters:
+        spending (Spending): An object of the Spending class.
+        spender_name: str
+            User's name.
         """
         super().__init__(spending, spender_name)
 
