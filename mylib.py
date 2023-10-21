@@ -53,6 +53,16 @@ class Spending:
         self.__spending_source = spending[1]
         self.__spending_cost = spending[2]
 
+    @classmethod
+    def create_with_date(cls, spending: list, sp_date: str) -> 'Spending':
+        """
+        Alternative constructor. With options to specify date.
+        Using in desktop_app.py"""
+        _spending = cls(spending)
+        _spending.__spending_date = datetime.strptime(
+            sp_date, '%Y-%m-%d %H:%M:%S')
+        return _spending
+
     @staticmethod
     def validate_format(spending_list) -> None:
         if len(spending_list) != 3:
@@ -71,7 +81,7 @@ class Spending:
 
     @staticmethod
     def validate_source(spending_list) -> None:
-        source = spending_list[1]
+        source = spending_list[1].lower()
         all_sources = Spending.bank + Spending.card + Spending.cash
 
         if source not in all_sources:
@@ -230,3 +240,14 @@ class CsvDatabase(Database):
             raise PermissionError(f'Нет доступа к файлу: {csv_file_path}')
         except Exception as error:
             raise error
+
+
+if __name__ == '__main__':
+
+    s1 = Spending(['Карта', 'Овощи', '1000'])
+    print(s1)
+
+    s2 = Spending.create_with_date(
+        ['Карта', 'Овощи', '10000'], sp_date='2023-10-01 15:11:22')
+    print(s2)
+    CsvDatabase(s2, 'Andrew').add_data('data/budget.csv')
