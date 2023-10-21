@@ -9,8 +9,8 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+tests.py
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-tests.py
