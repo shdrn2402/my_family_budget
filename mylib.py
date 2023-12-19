@@ -134,7 +134,7 @@ class Spending:
         if flag == 'year':
             return self.__spending_date.strftime('%Y')
         elif flag == 'month':
-            return self.__spending_date.strftime('%b')
+            return self.__spending_date.strftime('%m')
         elif flag == 'day':
             return self.__spending_date.strftime('%d')
         elif flag == 'weekday':
@@ -245,9 +245,9 @@ class CsvDatabase(Database):
 if __name__ == '__main__':
 
     s1 = Spending(['Карта', 'Овощи', '1000'])
-    print(s1)
-
+    print(s1.__dict__)
+    print()
     s2 = Spending.create_with_date(
         ['Карта', 'Овощи', '10000'], sp_date='2023-10-01 15:11:22')
-    print(s2)
-    CsvDatabase(s2, 'Andrew').add_data('data/budget.csv')
+    print(s2.__dict__)
+    # CsvDatabase(s2, 'Andrew').add_data('data/budget.csv')

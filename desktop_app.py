@@ -6,7 +6,6 @@ from tkinter import messagebox, ttk
 
 import mylib
 
-# TODO Подумать над окном вывода окна успешного сохранения, добавить количество добавленных объектов
 spendings = []
 data_folder = 'data/'
 os.makedirs(data_folder, exist_ok=True)
