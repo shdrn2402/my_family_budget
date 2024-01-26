@@ -23,22 +23,19 @@ def restore_placeholders():
 
 
 def validate_name():
-    name = spending_name_entry.get()
-    if name == " Enter the name of the purchase.":
+    if spending_name_entry.get() == " Enter the name of the purchase.":
         return False
     return True
 
 
 def validate_source():
-    source = spending_source_combobox.get()
-    if source == " Choose the source.":
+    if spending_source_combobox.get() == " Choose the source.":
         return False
     return True
 
 
 def validate_cost():
-    cost = spending_cost_entry.get()
-    if cost == " Enter the cost.":
+    if spending_cost_entry.get() == " Enter the cost.":
         return False
     return True
 
@@ -94,7 +91,8 @@ def add_data(event=None):
     global added_objects_counter
     name = spending_name_entry.get()
     source = spending_source_combobox.get()
-    ammount = spending_cost_entry.get()
+    cost = re.sub(r'(\d+),(\d+)', r'\1.\2', spending_cost_entry.get())
+    # cost = spending_cost_entry.get()
     if all(
         [
             validate_name(),
@@ -103,7 +101,7 @@ def add_data(event=None):
         ]
     ):
         date_time_string = get_date_time()
-        q_list = [name, source, ammount]
+        q_list = [name, source, cost]
         try:
             mylib.Spending.validate(q_list)
             spending = mylib.Spending.create_with_date(
