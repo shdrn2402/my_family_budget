@@ -7,6 +7,7 @@ from tkinter import messagebox, ttk
 import mylib
 
 spendings = []
+buyers_list = []
 data_folder = 'data/'
 os.makedirs(data_folder, exist_ok=True)
 data_path = os.path.join(data_folder, 'budget.csv')
@@ -16,6 +17,7 @@ def restore_placeholders():
     spending_name_entry_focus_out(event=None)
     spending_source_focus_out(event=None)
     spending_cost_entry_focus_out(event=None)
+    buyer_name_focus_out(event=None)
     spending_day_entry_focus_out(event=None)
     spending_month_entry_focus_out(event=None)
     spending_hour_entry_focus_out(event=None)
@@ -36,6 +38,12 @@ def validate_source():
 
 def validate_cost():
     if spending_cost_entry.get() == " Enter the cost.":
+        return False
+    return True
+
+
+def validate_buyer():
+    if buyer_name_combobox.get() == " Choose the buyer's name.":
         return False
     return True
 
@@ -76,6 +84,7 @@ def clear_data(event=None, confirm=True):
     spending_name_entry.delete(0, "end")
     spending_source_combobox.delete(0, "end")
     spending_cost_entry.delete(0, "end")
+    buyer_name_combobox.delete(0, "end")
     spending_day_entry.delete(0, "end")
     spending_month_entry.delete(0, "end")
     spending_hour_entry.delete(0, "end")
@@ -92,21 +101,24 @@ def add_data(event=None):
     name = spending_name_entry.get()
     source = spending_source_combobox.get()
     cost = re.sub(r'(\d+),(\d+)', r'\1.\2', spending_cost_entry.get())
-    # cost = spending_cost_entry.get()
+    buyer = buyer_name_combobox.get()
     if all(
         [
             validate_name(),
             validate_source(),
             validate_cost(),
+            validate_buyer(),
         ]
     ):
         date_time_string = get_date_time()
         q_list = [name, source, cost]
+
         try:
             mylib.Spending.validate(q_list)
             spending = mylib.Spending.create_with_date(
                 q_list, sp_date=date_time_string)
             spendings.append(spending)
+            buyers_list.append(buyer)
             clear_data(confirm=False)
             added_objects_counter = len(spendings)
             add_data_button_text.set(f"Add Data ({added_objects_counter})")
@@ -128,6 +140,7 @@ def save_data():
             validate_name(),
             validate_source(),
             validate_cost(),
+            validate_buyer(),
         ]
     ):
         if not spendings:
@@ -136,11 +149,12 @@ def save_data():
     else:
         add_data()
     try:
-        for spending in spendings:
-            mylib.CsvDatabase(spending, "Desktop").add_data(data_path)
-            message += f"{spending}\n\n"
+        for i in range(len(spendings)):
+            mylib.CsvDatabase(spendings[i], buyers_list[i]).add_data(data_path)
+            message += f"{spendings[i]}\n\n"
         messagebox.showinfo("Success", message)
         spendings.clear()
+        buyers_list.clear()
         added_objects_counter = len(spendings)
         add_data_button_text.set("Add Data")
         write_data_button_text.set("Save Data")
@@ -196,6 +210,27 @@ def spending_cost_entry_focus_out(event):
     if not spending_cost_entry.get():
         spending_cost_entry.insert(0, " Enter the cost.")
         spending_cost_entry.configure(fg="gray")
+
+
+def buyer_name_focus_in(event):
+    if buyer_name_combobox.get() == " Choose the buyer's name.":
+        buyer_name_combobox.delete(0, "end")
+        buyer_name_combobox.configure(foreground="black")
+
+
+def buyer_name_focus_out(event):
+    buyer = buyer_name_combobox.get()
+    if buyer not in buyers_names:
+        buyer_name_combobox.delete(0, "end")
+    if not buyer_name_combobox.get():
+        buyer_name_combobox.insert(0, " Choose the buyer's name.")
+        buyer_name_combobox.configure(foreground="gray")
+
+
+def buyer_name_select(event):
+    selected_buyer = buyer_name_combobox.get()
+    # Обновляем строку или переменную, куда будет сохранен выбранный источник
+    selected_buyer_variable.set(selected_buyer)
 
 
 def spending_day_entry_focus_in(event):
@@ -310,7 +345,7 @@ def about_app():
 # Creating the main window
 root = tk.Tk()
 root.title("My simple budget. V.1")
-root.geometry("700x485")
+root.geometry("700x505")
 root.resizable(width=False, height=False)
 # root.minsize(width=700, height=485)
 # root.maxsize(width=700, height=485)
@@ -368,7 +403,7 @@ spending_name_description_label.config(justify="left")
 # Spending Source Frame
 spending_source_frame = tk.Frame(
     root, relief=tk.GROOVE, borderwidth=3)
-spending_source_frame.place(x=2, y=125, width=697, height=90)
+spending_source_frame.place(x=2, y=125, width=697, height=75)
 
 # Spending Source Label
 spending_source_label = tk.Label(
@@ -412,7 +447,7 @@ spending_source_description_lable.config(justify="left")
 # Spending Cost Frame
 spending_cost_frame = tk.Frame(
     root, relief=tk.GROOVE, borderwidth=3)
-spending_cost_frame.place(x=2, y=215, width=697, height=90)
+spending_cost_frame.place(x=2, y=200, width=697, height=90)
 
 # Spending Cost Label
 spending_cost_label = tk.Label(
@@ -444,11 +479,54 @@ Evalable input: digits and decimal points.""",
 spending_cost_description_lable.place(x=5, y=40)
 spending_cost_description_lable.config(justify="left")
 
+# Buyer Name Frame
+buyer_name_frame = tk.Frame(
+    root, relief=tk.GROOVE, borderwidth=3)
+buyer_name_frame.place(x=2, y=290, width=697, height=75)
+
+# Buyer Name Label
+buyer_name_label = tk.Label(
+    buyer_name_frame,
+    text="Buyer's Name: *",
+    font=("Arial", "12", "bold"),
+    anchor="w"
+)
+buyer_name_label.place(x=5, y=5)
+
+# Buer Name Combobox
+buyers_names = ["Andrey", "Ekaterina"]
+selected_buyer_variable = tk.StringVar()
+buyer_name_combobox = ttk.Combobox(
+    buyer_name_frame,
+    values=buyers_names,
+    foreground="gray"
+)
+buyer_name_combobox.insert(0, " Choose the buyer's name.")
+buyer_name_combobox.bind(
+    "<<ComboboxSelected>>", buyer_name_select)
+buyer_name_combobox.bind(
+    "<FocusIn>", buyer_name_focus_in)
+buyer_name_combobox.bind(
+    "<FocusOut>", buyer_name_focus_out)
+buyer_name_combobox.place(x=180, y=5, width=502, height=25)
+
+# Separator
+separator = ttk.Separator(buyer_name_frame, orient="horizontal")
+separator.place(x=5, y=35, width=677, height=2)
+
+# Buyer Name Description Label
+buyer_name_description_lable = tk.Label(
+    buyer_name_frame,
+    text="Select the buyer's name from the dropdown list.",
+    font=("Arial", "10", "italic")
+)
+buyer_name_description_lable.place(x=5, y=40)
+buyer_name_description_lable.config(justify="left")
 
 # Date and time frame
 date_time_frame = tk.Frame(
     root, relief=tk.GROOVE, borderwidth=3)
-date_time_frame.place(x=2, y=305, width=697, height=85)
+date_time_frame.place(x=2, y=365, width=697, height=85)
 
 # Date label
 date_label = tk.Label(
@@ -515,7 +593,7 @@ date_time_description_label.config(justify="left")
 # Buttons frame
 buttons_frame = tk.Frame(
     root, relief=tk.GROOVE, borderwidth=3)
-buttons_frame.place(x=2, y=420, width=697, height=52)
+buttons_frame.place(x=2, y=450, width=697, height=52)
 
 # Buttons
 clear_data_button = tk.Button(
