@@ -154,22 +154,24 @@ class Database(abc.ABC):
 
     Abstract methods:
         __init__(self, spending: Spending,
-                 spender_name: str): Class constructor.
+                 buyer_name
+                 : str): Class constructor.
         prepare_data(self): Prepares data for insertion to database.
         add_data_to_csv(self, **kwargs): Adds data to database.
     """
     @abc.abstractmethod
-    def __init__(self, spending: Spending, spender_name: str):
+    def __init__(self, spending: Spending, buyer_name: str):
         """
         Initializes an object of the DataBase class.
 
         Parameters:
         spending: An object of the Spending class
-        spender_name: str
+        buyer_name
+        : str
             User's name.
         """
         self._spending = spending
-        self._spender_name = spender_name
+        self._buyer_name = buyer_name
 
     @abc.abstractmethod
     def prepare_data(self):
@@ -182,6 +184,11 @@ class Database(abc.ABC):
         '''Absract method for adding data to database.'''
         pass
 
+    @abc.abstractmethod
+    def get_buyer_name(self) -> str:
+        '''Absract method for getting buyer name from username.'''
+        pass
+
 
 class CsvDatabase(Database):
     """Class for adding expense data to a CSV file.
@@ -189,21 +196,34 @@ class CsvDatabase(Database):
     Methods:
     __init__(self,
             spending: Spending,
-            spender_name: str): Class constructor.
+            buyer_name
+            : str): Class constructor.
     prepare_data(self): Prepares data for CSV writing.
     add_datav(self, csv_file_path): Adds data to a CSV file.
     """
 
-    def __init__(self, spending: Spending, spender_name: str):
+    def __init__(self, spending: Spending, buyer_name: str):
         """
         Initializes an object of the CsvDatabase class.
 
         Parameters:
         spending (Spending): An object of the Spending class.
-        spender_name: str
+        buyer_name
+        : str
             User's name.
         """
-        super().__init__(spending, spender_name)
+        super().__init__(spending, buyer_name
+                         )
+
+    def get_buyer_name(self) -> str:
+        andrey = ['Andrew', 'Andrey', 'Андрей', '🇮🇱Andrey🇮🇱']
+        ekaterina = ['Ekaterina', 'Екатерина']
+        if self._buyer_name in andrey:
+            return 'Andrey'
+        elif self._buyer_name in ekaterina:
+            return 'Ekaterina'
+        else:
+            return self._buyer_name
 
     def prepare_data(self) -> list:
         spending_year = self._spending.get_spending_ymdw('year')
@@ -220,7 +240,7 @@ class CsvDatabase(Database):
             spending_month,
             spending_day,
             spending_weekday,
-            self._spender_name
+            self.get_buyer_name()
         ]
 
     def add_data(self, csv_file_path: str) -> None:
@@ -240,14 +260,3 @@ class CsvDatabase(Database):
             raise PermissionError(f'Нет доступа к файлу: {csv_file_path}')
         except Exception as error:
             raise error
-
-
-if __name__ == '__main__':
-
-    s1 = Spending(['Карта', 'Овощи', '1000'])
-    print(s1.__dict__)
-    print()
-    s2 = Spending.create_with_date(
-        ['Карта', 'Овощи', '10000'], sp_date='2023-10-01 15:11:22')
-    print(s2.__dict__)
-    # CsvDatabase(s2, 'Andrew').add_data('data/budget.csv')
