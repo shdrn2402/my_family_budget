@@ -5,11 +5,11 @@ from datetime import datetime, time
 
 import psycopg2
 
+# TODO add purchases categories besides names
 # TODO add documentation
 # TODO add triggers to DB, creating new tables for new users
 # TODO add unit tests for all functions and classes
 # TODO add spendings analysis in bot and desktop app
-# TODO add purchases categories besides names
 
 
 class Note(abc.ABC):
