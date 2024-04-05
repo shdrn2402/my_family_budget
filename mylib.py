@@ -1,6 +1,86 @@
 import abc
 import csv
+import re
 from datetime import datetime, time
+
+import psycopg2
+
+# TODO add documentation
+# TODO add triggers to DB, creating new tables for new users
+# TODO add unit tests for all functions and classes
+# TODO add spendings analysis in bot and desktop app
+# TODO add purchases categories besides names
+
+
+class Note(abc.ABC):
+
+    # def __init__(self, string: str):
+    #     """
+    #     Initializes an object of the Note class.
+    #     """
+    #     self.string = string
+    #     self.date = datetime.now()
+
+    # @classmethod
+    # def create_with_date(cls, string: str, note_date: str) -> 'Note':
+    #     """
+    #     Alternative constructor. With options to specify date.
+    #     Using in desktop_app.py"""
+    #     _note = cls(string)
+    #     _note.date = datetime.strptime(
+    #         note_date, '%Y-%m-%d %H:%M:%S')
+    #     return _note
+
+    def __init__(self, string, **kwargs) -> None:
+        """
+        Initializes an object of the Note class.
+        """
+        self._query_string = re.sub(r'(\d+),(\d+)', r'\1.\2', string)
+        if kwargs.get('date'):
+            self._date = datetime.strptime(
+                kwargs.get('date'), '%Y-%m-%d %H:%M:%S'
+            )
+        else:
+            self._date = datetime.now()
+        self._query_list = self.split_query_string()
+
+    def split_query_string(self) -> list:
+        """
+        Splits query string into list of strings.
+        """
+        if ',' in self.query_string:
+            query_list = self.query_string.split(',')
+        else:
+            query_list = [self.query_string]
+        return list(map(str.strip, query_list))
+
+    @abc.abstractmethod
+    def validate(self) -> None:
+        """
+        Performs all validation checks.
+        """
+        pass
+
+    @abc.abstractmethod
+    def add_note(self) -> None:
+        """
+        Adds note to database.
+        """
+        pass
+
+    @abc.abstractmethod
+    def get_note_date(self) -> str:
+        """
+        Returns the date of the note.
+        """
+        pass
+
+    @abc.abstractmethod
+    def update_note(self) -> None:
+        """
+        Updates note in database.
+        """
+        pass
 
 
 class Spending:
@@ -48,10 +128,10 @@ class Spending:
         spending: list
             List of data to be added in the format [name, source, amount].
         """
-        self.__spending_date = datetime.now()
-        self.__spending_name = spending[0]
-        self.__spending_source = spending[1]
-        self.__spending_cost = spending[2]
+        self._spending_datetime = datetime.now()
+        self._spending_name = spending[0]
+        self._spending_source = spending[1]
+        self._spending_cost = spending[2]
 
     @classmethod
     def create_with_date(cls, spending: list, sp_date: str) -> 'Spending':
@@ -59,7 +139,7 @@ class Spending:
         Alternative constructor. With options to specify date.
         Using in desktop_app.py"""
         _spending = cls(spending)
-        _spending.__spending_date = datetime.strptime(
+        _spending._spending_date = datetime.strptime(
             sp_date, '%Y-%m-%d %H:%M:%S')
         return _spending
 
@@ -105,48 +185,30 @@ class Spending:
 
     @property
     def spending_name(self) -> str:
-        return self.__spending_name.capitalize()
+        return self._spending_name.capitalize()
 
     @property
     def spending_source(self) -> str:
-        if self.__spending_source in Spending.bank:
+        if self._spending_source in Spending.bank:
             return 'Bank'
-        elif self.__spending_source in Spending.card:
+        elif self._spending_source in Spending.card:
             return 'Card'
         else:
             return 'Cash'
 
     @property
     def spending_cost(self) -> float:
-        return float(self.__spending_cost)
+        return float(self._spending_cost)
 
     @property
-    def spending_date(self) -> datetime:
-        return self.__spending_date.date()
-
-    def get_spending_time(self) -> time:
-        spending_time = self.__spending_date.time()
-        spending_time = time(spending_time.hour,
-                             spending_time.minute)
-        return spending_time
-
-    def get_spending_ymdw(self, flag: str) -> str:
-        if flag == 'year':
-            return self.__spending_date.strftime('%Y')
-        elif flag == 'month':
-            return self.__spending_date.strftime('%m')
-        elif flag == 'day':
-            return self.__spending_date.strftime('%d')
-        elif flag == 'weekday':
-            return self.__spending_date.strftime('%a')
-        else:
-            raise ValueError(f'Неверная дата!{Spending.frmt_msg}')
+    def spending_datetime(self) -> datetime:
+        return self._spending_datetime
 
     def __str__(self) -> str:
         return f'''Цель: {self.spending_name}
 Источник: {self.spending_source}
 Сумма: {self.spending_cost}
-Дата: {self.spending_date.strftime('%d-%m-%Y')}'''
+Дата: {self.spending_datetime.strftime('%d-%m-%Y')}'''
 
 
 class Database(abc.ABC):
@@ -174,20 +236,20 @@ class Database(abc.ABC):
         self._buyer_name = buyer_name
 
     @abc.abstractmethod
-    def prepare_data(self):
-        '''Absract method for preparing data for insertion to database.
-        '''
-        pass
-
-    @abc.abstractmethod
     def add_data(self, **kwargs):
         '''Absract method for adding data to database.'''
         pass
 
-    @abc.abstractmethod
-    def get_buyer_name(self) -> str:
-        '''Absract method for getting buyer name from username.'''
-        pass
+    @property
+    def buyer_name(self) -> str:
+        andrey = ['Andrew', 'Andrey', 'Андрей', '🇮🇱Andrey🇮🇱']
+        ekaterina = ['Ekaterina', 'Екатерина']
+        if self._buyer_name in andrey:
+            return 'Andrey'
+        elif self._buyer_name in ekaterina:
+            return 'Ekaterina'
+        else:
+            return self._buyer_name
 
 
 class CsvDatabase(Database):
@@ -214,33 +276,28 @@ class CsvDatabase(Database):
         """
         super().__init__(spending, buyer_name
                          )
-
-    def get_buyer_name(self) -> str:
-        andrey = ['Andrew', 'Andrey', 'Андрей', '🇮🇱Andrey🇮🇱']
-        ekaterina = ['Ekaterina', 'Екатерина']
-        if self._buyer_name in andrey:
-            return 'Andrey'
-        elif self._buyer_name in ekaterina:
-            return 'Ekaterina'
-        else:
-            return self._buyer_name
+        self._spending_datetime = self._spending.spending_datetime
+        self._spending_year = self._spending_datetime.strftime('%Y')
+        self._spending_month = self._spending_datetime.strftime('%m')
+        self._spending_day = self._spending_datetime.strftime('%d')
+        self._spending_weekday = self._spending_datetime.strftime('%a')
+        self._spending_date = self._spending_datetime.date()
+        spending_time = self._spending_datetime.time()
+        self._spending_time = time(spending_time.hour,
+                                   spending_time.minute)
 
     def prepare_data(self) -> list:
-        spending_year = self._spending.get_spending_ymdw('year')
-        spending_month = self._spending.get_spending_ymdw('month')
-        spending_day = self._spending.get_spending_ymdw('day')
-        spending_weekday = self._spending.get_spending_ymdw('weekday')
         return [
             self._spending.spending_name,
             self._spending.spending_source,
             self._spending.spending_cost,
-            self._spending.get_spending_time(),
-            self._spending.spending_date,
-            spending_year,
-            spending_month,
-            spending_day,
-            spending_weekday,
-            self.get_buyer_name()
+            self._spending_time,
+            self._spending_date,
+            self._spending_year,
+            self._spending_month,
+            self._spending_day,
+            self._spending_weekday,
+            self.buyer_name
         ]
 
     def add_data(self, csv_file_path: str) -> None:
@@ -260,3 +317,46 @@ class CsvDatabase(Database):
             raise PermissionError(f'Нет доступа к файлу: {csv_file_path}')
         except Exception as error:
             raise error
+
+
+class PostgresDatabase(Database):
+
+    def __init__(self, **kwargs):
+        self._dbname = kwargs.get('dbname')
+        self._user = kwargs.get('user')
+        self._password = kwargs.get('password')
+        self._host = kwargs.get('host')
+        self._port = kwargs.get('port')
+
+    @property
+    def get_connection(self):
+        return psycopg2.connect(
+            dbname=self._dbname,
+            user=self._user,
+            password=self._password,
+            host=self._host,
+            port=self._port
+        )
+
+    def add_data(self,
+                 spending: Spending,
+                 buyer_name: str,
+                 conn):
+        cur = conn.cursor()
+        query = '''
+        INSERT INTO budget.budget (
+            purchase_name,
+            purchase_category,
+            price,
+            financing_source,
+            purchase_date,
+            buyers_name)
+            VALUES (%s, %s, %s, %s, %s, %s);'''
+        cur.execute(query, (spending.spending_name,
+                            'Undefined',
+                            spending.spending_cost,
+                            spending.spending_source,
+                            spending.spending_datetime,
+                            buyer_name))
+        conn.commit()
+        cur.close()

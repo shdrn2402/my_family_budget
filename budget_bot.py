@@ -22,11 +22,16 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     filename=log_path,
     encoding='utf-8',
-    level=logging.WARNING)
+    level=logging.INFO)
 
 
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 WHITELIST = os.environ.get('WHITE_LIST').split(' ')
+DBNAME = os.environ.get('DBNAME')
+USER = os.environ.get('USER')
+PASSWORD = os.environ.get('PASSWORD')
+PORT = os.environ.get('PORT')
+HOST = os.environ.get('HOST')
 
 
 def get_query_list(query_str: str) -> list:
@@ -71,7 +76,7 @@ async def telegram_start_text(update: Update,
     """Send welcome messages to the user."""
     user_first_name = update.effective_user.first_name
     text = f'''Привет, {user_first_name},
-Это бот для ведения сейного бюджета в google sheets с помощью telegram.
+Это бот для ведения сейного бюджета с помощью telegram.
 В данный момент это закрытый бот.
 Функциональность ограничена для тестирования.
 Используй /help для получения списка команд.'''
@@ -86,6 +91,9 @@ async def processor(update: Update,
                     context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     user_first_name = update.effective_user.first_name
+    # logging.info(update)
+    # logging.info(update.effective_chat)
+    # logging.info(update.effective_user)
 
     if is_user_in_white_list(str(chat_id)):
         query_str = re.sub(r'(\d+),(\d+)', r'\1.\2', update.message.text)
@@ -96,7 +104,11 @@ async def processor(update: Update,
 Спасибо за понимание.'''
         await update.message.reply_text(text)
         return
-
+    conn = mylib.PostgresDatabase(dbname=DBNAME,
+                                  user=USER,
+                                  password=PASSWORD,
+                                  host=HOST,
+                                  port=PORT).get_connection
     for query_str in query_list:
         try:
             *name, source, amount = query_str.split()
@@ -104,6 +116,10 @@ async def processor(update: Update,
             mylib.Spending.validate(q_list)
             spending = mylib.Spending(q_list)
             mylib.CsvDatabase(spending, user_first_name).add_data(data_path)
+            mylib.PostgresDatabase().add_data(spending=spending,
+                                              buyer_name=user_first_name,
+                                              conn=conn)
+
             text = f'''Данные успешно добавлены:
 {str(spending)}
 '''
@@ -111,6 +127,7 @@ async def processor(update: Update,
         except Exception as err:
             logging.error(err)
             await update.message.reply_text(f'Ошибка! Расход не учтен. {err}')
+    conn.close()
 
 
 def main():
