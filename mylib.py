@@ -5,9 +5,7 @@ from datetime import datetime, time
 
 import psycopg2
 
-# TODO add purchases categories besides names
 # TODO add documentation
-# TODO add triggers to DB, creating new tables for new users
 # TODO add unit tests for all functions and classes
 # TODO add spendings analysis in bot and desktop app
 
@@ -112,9 +110,6 @@ class Spending:
         __str__(self): Returns a string representation of the expense.
     """
 
-    bank = ['чек', 'чеки', 'банк', 'check', 'bank']
-    card = ['карта', 'кредитка', 'ашрай', 'card', 'credit']
-    cash = ['нал', 'наличные', 'кэш', 'кеш', 'cash', 'money']
     frmt_msg = '''
 Для добавления расходов необходимо использовать следующий формат
 [наименование траты - str] [источник траты - str] [сумма траты - str]
@@ -128,9 +123,9 @@ class Spending:
         spending: list
             List of data to be added in the format [name, source, amount].
         """
-        self._spending_datetime = datetime.now()
+        self._spending_datetime = datetime.now().replace(microsecond=0)
         self._spending_name = spending[0]
-        self._spending_source = spending[1]
+        self._spending_source = spending[1].lower()
         self._spending_cost = spending[2]
 
     @classmethod
@@ -139,17 +134,17 @@ class Spending:
         Alternative constructor. With options to specify date.
         Using in desktop_app.py"""
         _spending = cls(spending)
-        _spending._spending_date = datetime.strptime(
+        _spending._spending_datetime = datetime.strptime(
             sp_date, '%Y-%m-%d %H:%M:%S')
         return _spending
 
     @staticmethod
-    def validate_format(spending_list) -> None:
+    def validate_format(spending_list: list) -> None:
         if len(spending_list) != 3:
             raise ValueError(f'Неверный формат данных!{Spending.frmt_msg}')
 
     @staticmethod
-    def validate_spending_name(spending_list) -> None:
+    def validate_spending_name(spending_list: list) -> None:
         try:
             float(spending_list[0])
         except ValueError:
@@ -160,15 +155,7 @@ class Spending:
             )
 
     @staticmethod
-    def validate_source(spending_list) -> None:
-        source = spending_list[1].lower()
-        all_sources = Spending.bank + Spending.card + Spending.cash
-
-        if source not in all_sources:
-            raise ValueError(f'Недействительный источник трат: {source}')
-
-    @staticmethod
-    def validate_cost(spending_list) -> None:
+    def validate_cost(spending_list: list) -> None:
         try:
             float(spending_list[2])
         except ValueError:
@@ -180,7 +167,6 @@ class Spending:
     def validate(spending_list) -> None:
         Spending.validate_format(spending_list)
         Spending.validate_spending_name(spending_list)
-        Spending.validate_source(spending_list)
         Spending.validate_cost(spending_list)
 
     @property
@@ -189,12 +175,7 @@ class Spending:
 
     @property
     def spending_source(self) -> str:
-        if self._spending_source in Spending.bank:
-            return 'Bank'
-        elif self._spending_source in Spending.card:
-            return 'Card'
-        else:
-            return 'Cash'
+        return self._spending_source
 
     @property
     def spending_cost(self) -> float:
@@ -234,6 +215,11 @@ class Database(abc.ABC):
         """
         self._spending = spending
         self._buyer_name = buyer_name
+
+    @abc.abstractmethod
+    def prepare_data(self):
+        '''Absract method for preparing data for insertion to database.'''
+        pass
 
     @abc.abstractmethod
     def add_data(self, **kwargs):
@@ -327,36 +313,118 @@ class PostgresDatabase(Database):
         self._password = kwargs.get('password')
         self._host = kwargs.get('host')
         self._port = kwargs.get('port')
+        self._connection = None
+        self._purchase_category = 'Undefined'
+        self._purchase_subcategory = 'Undefined'
+        self._purchase_source = 'Undefined'
 
     @property
     def get_connection(self):
-        return psycopg2.connect(
-            dbname=self._dbname,
-            user=self._user,
-            password=self._password,
-            host=self._host,
-            port=self._port
-        )
+        if self._connection is None:
+            self._connection = psycopg2.connect(
+                dbname=self._dbname,
+                user=self._user,
+                password=self._password,
+                host=self._host,
+                port=self._port
+            )
+        return self._connection
+
+    @staticmethod
+    def validate_user(tg_id: str, conn) -> bool:
+        cur = conn.cursor()
+        query = '''
+        SELECT EXISTS (
+            SELECT 1
+            FROM budget.users
+            WHERE tg_id = %s
+        );
+        '''
+        cur.execute(query, (tg_id,))
+        user_exists = cur.fetchone()
+        cur.close()
+        return user_exists[0]
+
+    @staticmethod
+    def get_undefined_categories_amount(conn) -> int:
+        cur = conn.cursor()
+        query = '''
+        SELECT COUNT(*)
+        FROM budget.budget
+        WHERE purchase_subcategory = 'Undefined';
+        '''
+        cur.execute(query)
+        count_undefined_categories = cur.fetchone()
+        cur.close()
+        return count_undefined_categories[0]
+
+    def prepare_data(self,
+                     purchase_name: str,
+                     source_name: str,
+                     conn):
+        cur = conn.cursor()
+        query = '''
+        SELECT purchase_subcategory
+        FROM budget.budget
+        WHERE purchase_name = %s;
+        '''
+        cur.execute(query, (purchase_name,))
+        existing_category = cur.fetchone()
+        if existing_category:
+            self._purchase_subcategory = existing_category[0]
+
+        query = '''
+        SELECT  category_name
+        FROM budget.purchase_category_subcategory
+        WHERE subcategory_name = %s;
+        '''
+        cur.execute(query, (self._purchase_subcategory,))
+        category_name = cur.fetchone()
+        if category_name:
+            self._purchase_category = category_name[0]
+
+        query = '''
+        SELECT source_name_db
+        FROM budget.sources
+        WHERE source_name = %s;
+        '''
+        cur.execute(query, (source_name,))
+        source_name_db = cur.fetchone()
+        if not source_name_db:
+            raise ValueError(f'Недействительный источник трат: {source_name}')
+        else:
+            self._purchase_source = source_name_db[0].capitalize()
+
+        cur.close()
 
     def add_data(self,
                  spending: Spending,
                  buyer_name: str,
                  conn):
+
+        self.prepare_data(spending.spending_name,
+                          spending.spending_source,
+                          conn)
         cur = conn.cursor()
         query = '''
         INSERT INTO budget.budget (
             purchase_name,
-            purchase_category,
+            purchase_subcategory,
             price,
             financing_source,
             purchase_date,
-            buyers_name)
-            VALUES (%s, %s, %s, %s, %s, %s);'''
+            buyers_name,
+            purchase_category)
+            VALUES (%s, %s, %s, %s, %s, %s, %s);
+            '''
+        formatted_datetime = spending.spending_datetime.strftime(
+            '%Y-%m-%d %H:%M:%S')
         cur.execute(query, (spending.spending_name,
-                            'Undefined',
+                            self._purchase_subcategory,
                             spending.spending_cost,
-                            spending.spending_source,
-                            spending.spending_datetime,
-                            buyer_name))
+                            self._purchase_source,
+                            formatted_datetime,
+                            buyer_name,
+                            self._purchase_category))
         conn.commit()
         cur.close()

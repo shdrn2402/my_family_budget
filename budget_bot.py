@@ -1,6 +1,7 @@
 import logging
 import os.path
 import re
+import subprocess
 
 from dotenv import load_dotenv
 from telegram import Update
@@ -22,16 +23,20 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     filename=log_path,
     encoding='utf-8',
-    level=logging.INFO)
+    level=logging.WARNING)
 
 
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
-WHITELIST = os.environ.get('WHITE_LIST').split(' ')
 DBNAME = os.environ.get('DBNAME')
 USER = os.environ.get('USER')
 PASSWORD = os.environ.get('PASSWORD')
 PORT = os.environ.get('PORT')
 HOST = os.environ.get('HOST')
+
+
+def start_dashboard():
+    print('Dashboard started...')
+    subprocess.Popen(['python', 'dashboard.py'])
 
 
 def get_query_list(query_str: str) -> list:
@@ -83,19 +88,16 @@ async def telegram_start_text(update: Update,
     await update.message.reply_text(text)
 
 
-def is_user_in_white_list(user_id: str) -> bool:
-    return user_id in WHITELIST
-
-
 async def processor(update: Update,
                     context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     user_first_name = update.effective_user.first_name
-    # logging.info(update)
-    # logging.info(update.effective_chat)
-    # logging.info(update.effective_user)
-
-    if is_user_in_white_list(str(chat_id)):
+    conn = mylib.PostgresDatabase(dbname=DBNAME,
+                                  user=USER,
+                                  password=PASSWORD,
+                                  host=HOST,
+                                  port=PORT).get_connection
+    if mylib.PostgresDatabase.validate_user(str(chat_id), conn):
         query_str = re.sub(r'(\d+),(\d+)', r'\1.\2', update.message.text)
         query_list = get_query_list(query_str)
     else:
@@ -104,18 +106,12 @@ async def processor(update: Update,
 Спасибо за понимание.'''
         await update.message.reply_text(text)
         return
-    conn = mylib.PostgresDatabase(dbname=DBNAME,
-                                  user=USER,
-                                  password=PASSWORD,
-                                  host=HOST,
-                                  port=PORT).get_connection
     for query_str in query_list:
         try:
             *name, source, amount = query_str.split()
             q_list = [' '.join(name), source, amount]
             mylib.Spending.validate(q_list)
             spending = mylib.Spending(q_list)
-            mylib.CsvDatabase(spending, user_first_name).add_data(data_path)
             mylib.PostgresDatabase().add_data(spending=spending,
                                               buyer_name=user_first_name,
                                               conn=conn)
@@ -127,10 +123,18 @@ async def processor(update: Update,
         except Exception as err:
             logging.error(err)
             await update.message.reply_text(f'Ошибка! Расход не учтен. {err}')
+
+    undef_categories = mylib.PostgresDatabase.get_undefined_categories_amount(
+        conn)
+    if undef_categories:
+        text = f'Категории не определены: {undef_categories}'
+        await update.message.reply_text(text)
     conn.close()
 
 
 def main():
+    start_dashboard()
+
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler('help', telegram_help_text))
     app.add_handler(CommandHandler('start', telegram_start_text))

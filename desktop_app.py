@@ -4,13 +4,29 @@ import re
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from dotenv import load_dotenv
+
 import mylib
+
+load_dotenv()
 
 spendings = []
 buyers_list = []
 data_folder = 'data/'
 os.makedirs(data_folder, exist_ok=True)
 data_path = os.path.join(data_folder, 'budget.csv')
+
+DBNAME = os.environ.get('DBNAME')
+USER = os.environ.get('USER')
+PASSWORD = os.environ.get('PASSWORD')
+PORT = os.environ.get('PORT')
+HOST = os.environ.get('HOST')
+
+conn = mylib.PostgresDatabase(dbname=DBNAME,
+                              user=USER,
+                              password=PASSWORD,
+                              host=HOST,
+                              port=PORT).get_connection
 
 
 def restore_placeholders():
@@ -100,7 +116,9 @@ def add_data(event=None):
     global added_objects_counter
     name = spending_name_entry.get()
     source = spending_source_combobox.get()
-    cost = re.sub(r'(\d+),(\d+)', r'\1.\2', spending_cost_entry.get())
+    cost = re.sub(r'(\d+),(\d+)', r'\1.\2',
+                  spending_cost_entry.get())
+    cost = round(float(cost), 2)
     buyer = buyer_name_combobox.get()
     if all(
         [
@@ -145,12 +163,15 @@ def save_data():
     ):
         if not spendings:
             messagebox.showerror("Error", "No data to save!")
-            return
+        return
     else:
         add_data()
     try:
         for i in range(len(spendings)):
-            mylib.CsvDatabase(spendings[i], buyers_list[i]).add_data(data_path)
+            mylib.PostgresDatabase().add_data(spending=spendings[i],
+                                              buyer_name=buyers_list[i],
+                                              conn=conn)
+            # mylib.CsvDatabase(spendings[i], buyers_list[i]).add_data(data_path)
             message += f"{spendings[i]}\n\n"
         messagebox.showinfo("Success", message)
         spendings.clear()
