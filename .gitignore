@@ -1,3 +1,5 @@
+#Backups
+backups/
 # Environments
 .vscode/
 .env
