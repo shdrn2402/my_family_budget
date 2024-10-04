@@ -4,6 +4,7 @@ import re
 from datetime import datetime, time
 
 import psycopg2
+from typing import List
 
 # TODO add documentation
 # TODO add unit tests for all functions and classes
@@ -11,74 +12,93 @@ import psycopg2
 
 
 class Note(abc.ABC):
-
-    # def __init__(self, string: str):
-    #     """
-    #     Initializes an object of the Note class.
-    #     """
-    #     self.string = string
-    #     self.date = datetime.now()
-
-    # @classmethod
-    # def create_with_date(cls, string: str, note_date: str) -> 'Note':
-    #     """
-    #     Alternative constructor. With options to specify date.
-    #     Using in desktop_app.py"""
-    #     _note = cls(string)
-    #     _note.date = datetime.strptime(
-    #         note_date, '%Y-%m-%d %H:%M:%S')
-    #     return _note
-
-    def __init__(self, string, **kwargs) -> None:
+    def __init__(self, string: str):
         """
         Initializes an object of the Note class.
+        
+        :param string: The input string containing the note details.
         """
-        self._query_string = re.sub(r'(\d+),(\d+)', r'\1.\2', string)
-        if kwargs.get('date'):
-            self._date = datetime.strptime(
-                kwargs.get('date'), '%Y-%m-%d %H:%M:%S'
-            )
-        else:
-            self._date = datetime.now()
-        self._query_list = self.split_query_string()
+        self._string = string
+        self._date = datetime.now()
 
-    def split_query_string(self) -> list:
+    @classmethod
+    def create_with_date(cls, string: str, note_date: str) -> 'Note':
         """
-        Splits query string into list of strings.
+        Alternative constructor with options to specify a custom date.
+        
+        :param string: The input string containing the note details.
+        :param note_date: A string representing the date in the format '%Y-%m-%d %H:%M:%S'.
+        :return: An instance of the Note class with the specified date.
         """
-        if ',' in self.query_string:
-            query_list = self.query_string.split(',')
+        _note = cls(string)
+        _note._date = datetime.strptime(note_date, '%Y-%m-%d %H:%M:%S')
+        return _note
+
+    @property
+    def string(self) -> str:
+        """
+        Returns the string attribute.
+        
+        :return: The input string.
+        """
+        return self._string
+
+    @property
+    def date(self) -> datetime:
+        """
+        Returns the date attribute.
+        
+        :return: The datetime object representing when the note was created or assigned.
+        """
+        return self._date
+
+    def split_query_string(self) -> List[str]:
+        """
+        Splits the input query string into a list of strings (handles multiple entries).
+        
+        :return: A list of individual query strings.
+        """
+        if ',' in self._string:
+            query_list = self._string.split(',')
         else:
-            query_list = [self.query_string]
+            query_list = [self._string]
+        # Strips extra spaces and filters out empty entries
         return list(map(str.strip, query_list))
-
-    @abc.abstractmethod
-    def validate(self) -> None:
-        """
-        Performs all validation checks.
-        """
-        pass
 
     @abc.abstractmethod
     def add_note(self) -> None:
         """
-        Adds note to database.
+        Adds the note to the database.
+        This method must be implemented in a subclass.
         """
         pass
 
     @abc.abstractmethod
-    def get_note_date(self) -> str:
+    def del_note(self) -> None:
         """
-        Returns the date of the note.
+        Deletes the note from the database.
+        This method must be implemented in a subclass.
         """
         pass
 
     @abc.abstractmethod
     def update_note(self) -> None:
         """
-        Updates note in database.
+        Updates the note in the database.
+        This method must be implemented in a subclass.
         """
         pass
+
+    @abc.abstractmethod
+    def __str__(self) -> str:
+        """
+        Converts the note to a string representation.
+        This method must be implemented in a subclass.
+        
+        :return: A string representation of the note.
+        """
+        pass
+
 
 
 class Spending:

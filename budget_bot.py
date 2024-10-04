@@ -50,7 +50,12 @@ def get_query_list(query_str: str) -> list:
 async def telegram_help_text(update: Update,
                              context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send help message to the user."""
-    user_first_name = update.effective_user.first_name
+    user_first_name = (
+        update.effective_user.first_name
+        if update.effective_user
+        else 'Added from Telegram'
+    )
+
     text = f'''И так, {user_first_name},
 На данный момент доступен только один вариант ввода комманд.
 Для конкретной таблицы содержащей поля:
@@ -79,7 +84,12 @@ async def telegram_help_text(update: Update,
 async def telegram_start_text(update: Update,
                               context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send welcome messages to the user."""
-    user_first_name = update.effective_user.first_name
+
+    user_first_name = (
+        update.effective_user.first_name
+        if update.effective_user
+        else 'Added from Telegram'
+    )
     text = f'''Привет, {user_first_name},
 Это бот для ведения сейного бюджета с помощью telegram.
 В данный момент это закрытый бот.
@@ -91,7 +101,12 @@ async def telegram_start_text(update: Update,
 async def processor(update: Update,
                     context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
-    user_first_name = update.effective_user.first_name
+
+    user_first_name = (
+        update.effective_user.first_name
+        if update.effective_user
+        else 'Added from Telegram'
+    )
     conn = mylib.PostgresDatabase(dbname=DBNAME,
                                   user=USER,
                                   password=PASSWORD,
