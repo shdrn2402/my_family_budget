@@ -113,8 +113,9 @@ async def processor(update: Update,
                                   host=HOST,
                                   port=PORT).get_connection
     if mylib.PostgresDatabase.validate_user(str(chat_id), conn):
-        query_str = re.sub(r'(\d+),(\d+)', r'\1.\2', update.message.text)
-        query_list = get_query_list(query_str)
+        query_list = mylib.Spending.split_query_string(update.message.text)
+
+        # query_list = get_query_list(query_str)
     else:
         text = '''Понимаю любопытсво, но это личная информация.
 Необходимо добавить ваш ID в список разрешенных.

@@ -1,6 +1,5 @@
 import abc
 import csv
-import re
 from datetime import datetime, time
 
 import psycopg2
@@ -15,19 +14,21 @@ class Note(abc.ABC):
     def __init__(self, string: str):
         """
         Initializes an object of the Note class.
-        
+
         :param string: The input string containing the note details.
         """
         self._string = string
-        self._date = datetime.now()
+        self._date = datetime.now().replace(microsecond=0)
 
+    @abc.abstractmethod
     @classmethod
     def create_with_date(cls, string: str, note_date: str) -> 'Note':
         """
         Alternative constructor with options to specify a custom date.
-        
+
         :param string: The input string containing the note details.
-        :param note_date: A string representing the date in the format '%Y-%m-%d %H:%M:%S'.
+        :param note_date: A string representing the date in the format
+        '%Y-%m-%d %H:%M:%S'.
         :return: An instance of the Note class with the specified date.
         """
         _note = cls(string)
@@ -38,7 +39,7 @@ class Note(abc.ABC):
     def string(self) -> str:
         """
         Returns the string attribute.
-        
+
         :return: The input string.
         """
         return self._string
@@ -47,45 +48,34 @@ class Note(abc.ABC):
     def date(self) -> datetime:
         """
         Returns the date attribute.
-        
-        :return: The datetime object representing when the note was created or assigned.
+
+        :return: The datetime object representing when the note was created
+        or assigned.
         """
         return self._date
 
-    def split_query_string(self) -> List[str]:
+    @staticmethod
+    def split_query_string(query_str: str) -> List[str]:
         """
-        Splits the input query string into a list of strings (handles multiple entries).
-        
+        Splits the input query string into a list of strings
+        (handles multiple entries).
+
         :return: A list of individual query strings.
         """
-        if ',' in self._string:
-            query_list = self._string.split(',')
+        if ',' in self.string:
+            query_list = self.string.split(',')
         else:
-            query_list = [self._string]
-        # Strips extra spaces and filters out empty entries
+            query_list = [self.string]
         return list(map(str.strip, query_list))
 
     @abc.abstractmethod
-    def add_note(self) -> None:
+    def validate(self, spending: list) -> bool:
         """
-        Adds the note to the database.
-        This method must be implemented in a subclass.
-        """
-        pass
+        Validates the note data.
+        This method must be implemented in a subclass to define specific
+        validation logic.
 
-    @abc.abstractmethod
-    def del_note(self) -> None:
-        """
-        Deletes the note from the database.
-        This method must be implemented in a subclass.
-        """
-        pass
-
-    @abc.abstractmethod
-    def update_note(self) -> None:
-        """
-        Updates the note in the database.
-        This method must be implemented in a subclass.
+        :return: True if the data is valid, otherwise False.
         """
         pass
 
@@ -94,79 +84,52 @@ class Note(abc.ABC):
         """
         Converts the note to a string representation.
         This method must be implemented in a subclass.
-        
+
         :return: A string representation of the note.
         """
         pass
 
 
-
-class Spending:
-    """Class to represent information about expenses.
-
-    Attributes:
-        bank: list
-            List of keywords for bank expenses
-        card: list
-            List of keywords for card expenses
-        cash: list
-            List of keywords for cash expenses
-        frmt_msg: str
-            Message with correct input example
-
-    Methods:
-        __init__(self, spending: str): Class constructor.
-        validate_format(self, spending_list): Checks input format.
-        validate_spending_name(self, spending_list): Checks expense name.
-        validate_source(self, spending_list): Checks expense source.
-        validate_cost(self, spending_list): Checks expense cost.
-        validate(self, spending_list): Performs all validation checks.
-        spending_name(self): Returns formatted expense name.
-        spending_source(self): Returns expense source.
-        spending_cost(self): Returns expense cost.
-        spending_date(self): Returns the date of the expense.
-        get_spending_time(self): Returns the time of the expense.
-        get_spending_ymdw(self, flag: str): Returns date and time components.
-        __str__(self): Returns a string representation of the expense.
-    """
+class Spending(Note):
+    """Class to represent information about expenses."""
 
     frmt_msg = '''
-Для добавления расходов необходимо использовать следующий формат
-[наименование траты - str] [источник траты - str] [сумма траты - str]
+Для добавления расходов необходимо использовать следующий формат:
+[наименование траты - str] [источник траты - str] [сумма траты - float]
 '''
 
-    def __init__(self, spending: list):
+    def __init__(self, spending: str):
         """
         Initializes an object of the Spending class.
 
-        Parameters:
-        spending: list
-            List of data to be added in the format [name, source, amount].
+        :param spending: A string containing the expense details.
         """
-        self._spending_datetime = datetime.now().replace(microsecond=0)
-        self._spending_name = spending[0]
-        self._spending_source = spending[1].lower()
-        self._spending_cost = spending[2]
+        super().__init__(spending)
+        self._spendings_list = self.split_query_string()
 
     @classmethod
-    def create_with_date(cls, spending: list, sp_date: str) -> 'Spending':
+    def create_with_date(cls, spending: str, sp_date: str) -> 'Spending':
         """
-        Alternative constructor. With options to specify date.
-        Using in desktop_app.py"""
+        Alternative constructor. With options to specify a custom date.
+
+        :param spending: The input string with expense details.
+        :param sp_date: A string representing the date in format
+        '%Y-%m-%d %H:%M:%S'.
+        :return: An instance of the Spending class with the specified date.
+        """
         _spending = cls(spending)
-        _spending._spending_datetime = datetime.strptime(
-            sp_date, '%Y-%m-%d %H:%M:%S')
+        _spending._date = datetime.strptime(sp_date, '%Y-%m-%d %H:%M:%S')
         return _spending
 
     @staticmethod
-    def validate_format(spending_list: list) -> None:
-        if len(spending_list) != 3:
+    def validate_format(spending: list) -> None:
+        if len(spending) != 3:
             raise ValueError(f'Неверный формат данных!{Spending.frmt_msg}')
 
     @staticmethod
-    def validate_spending_name(spending_list: list) -> None:
+    def validate_spending_name(spending: str) -> None:
         try:
-            float(spending_list[0])
+            float(spending[0])
         except ValueError:
             pass
         else:
@@ -175,41 +138,54 @@ class Spending:
             )
 
     @staticmethod
-    def validate_cost(spending_list: list) -> None:
+    def validate_cost(spending: str) -> None:
         try:
-            float(spending_list[2])
+            float(spending[2])
         except ValueError:
             raise ValueError(
                 f'Третий параметр должен быть числом!{Spending.frmt_msg}'
             )
 
     @staticmethod
-    def validate(spending_list) -> None:
-        Spending.validate_format(spending_list)
-        Spending.validate_spending_name(spending_list)
-        Spending.validate_cost(spending_list)
+    def validate(spendings: list) -> bool:
+        """
+        Validates the spending data (name, source, and cost).
+        """
+        for spending in spendings:
+            *name, source, amount = spending.split()
+            Spending.validate_format(spending)
+            Spending.validate_spending_name(name)
+            Spending.validate_cost(amount)
+        return True
 
     @property
-    def spending_name(self) -> str:
-        return self._spending_name.capitalize()
+    def spendings_list(self) -> list:
+        return self._spendings_list
 
     @property
-    def spending_source(self) -> str:
-        return self._spending_source
+    # def spending_name(self) -> str:
+    #     return self._spending_name
+    # @property
+    # def spending_source(self) -> str:
+    #     return self._spending_source
+
+    # @property
+    # def spending_cost(self) -> float:
+    #     return float(self._spending_cost)
 
     @property
-    def spending_cost(self) -> float:
-        return float(self._spending_cost)
-
-    @property
-    def spending_datetime(self) -> datetime:
-        return self._spending_datetime
+    def spending_date(self) -> datetime:
+        return self._date
 
     def __str__(self) -> str:
+        """
+        Returns a string representation of the spending.
+        """
         return f'''Цель: {self.spending_name}
 Источник: {self.spending_source}
 Сумма: {self.spending_cost}
 Дата: {self.spending_datetime.strftime('%d-%m-%Y')}'''
+
 
 
 class Database(abc.ABC):
