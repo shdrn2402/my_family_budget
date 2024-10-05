@@ -20,7 +20,6 @@ class Note(abc.ABC):
         self._string = string
         self._date = datetime.now().replace(microsecond=0)
 
-    @abc.abstractmethod
     @classmethod
     def create_with_date(cls, string: str, note_date: str) -> 'Note':
         """
@@ -107,19 +106,6 @@ class Spending(Note):
         super().__init__(spending)
         self._spendings_list = self.split_query_string()
 
-    @classmethod
-    def create_with_date(cls, spending: str, sp_date: str) -> 'Spending':
-        """
-        Alternative constructor. With options to specify a custom date.
-
-        :param spending: The input string with expense details.
-        :param sp_date: A string representing the date in format
-        '%Y-%m-%d %H:%M:%S'.
-        :return: An instance of the Spending class with the specified date.
-        """
-        _spending = cls(spending)
-        _spending._date = datetime.strptime(sp_date, '%Y-%m-%d %H:%M:%S')
-        return _spending
 
     @staticmethod
     def validate_format(spending: list) -> None:
