@@ -39,12 +39,12 @@ def start_dashboard():
     subprocess.Popen(['python', 'dashboard.py'])
 
 
-def get_query_list(query_str: str) -> list:
-    if ',' in query_str:
-        query_list = query_str.split(',')
-    else:
-        query_list = [query_str]
-    return list(map(str.strip, query_list))
+# def get_query_list(query_str: str) -> list:
+#     if ',' in query_str:
+#         query_list = query_str.split(',')
+#     else:
+#         query_list = [query_str]
+#     return list(map(str.strip, query_list))
 
 
 async def telegram_help_text(update: Update,
@@ -100,7 +100,13 @@ async def telegram_start_text(update: Update,
 
 async def processor(update: Update,
                     context: ContextTypes.DEFAULT_TYPE) -> None:
-    chat_id = update.effective_chat.id
+
+    if update.effective_chat is not None:
+        chat_id = update.effective_chat.id
+        data_to_insert_to_db = []
+        invalid_queries = []
+    else:
+        raise Exception('Chat ID is None')
 
     user_first_name = (
         update.effective_user.first_name
@@ -114,31 +120,37 @@ async def processor(update: Update,
                                   port=PORT).get_connection
     if mylib.PostgresDatabase.validate_user(str(chat_id), conn):
         query_list = mylib.Spending.split_query_string(update.message.text)
-
-        # query_list = get_query_list(query_str)
     else:
         text = '''Понимаю любопытсво, но это личная информация.
 Необходимо добавить ваш ID в список разрешенных.
 Спасибо за понимание.'''
         await update.message.reply_text(text)
         return
-    for query_str in query_list:
+    for query in query_list:
         try:
-            *name, source, amount = query_str.split()
-            q_list = [' '.join(name), source, amount]
-            mylib.Spending.validate(q_list)
-            spending = mylib.Spending(q_list)
-            mylib.PostgresDatabase().add_data(spending=spending,
-                                              buyer_name=user_first_name,
-                                              conn=conn)
-
-            text = f'''Данные успешно добавлены:
-{str(spending)}
-'''
-            await update.message.reply_text(text)
+            valid_data = mylib.Spending.validate(query)
+            spending = mylib.Spending(**valid_data)
+            data_to_insert_to_db.append(spending)
         except Exception as err:
+            invalid_queries.append(query)
             logging.error(err)
             await update.message.reply_text(f'Ошибка! Расход не учтен. {err}')
+
+    if data_to_insert_to_db:
+        # mylib.PostgresDatabase().add_data(spendings=data_to_insert_to_db,
+        #                                   buyer_name=user_first_name,
+        #                                   conn=conn)
+        spendings_summary = mylib.Spending.summarize_spendings(
+            data_to_insert_to_db
+        )
+        text = f'''Данные успешно добавлены:
+{spendings_summary}
+'''
+        await update.message.reply_text(text)
+
+    if invalid_queries:
+        text = f'Некорректные данные: {invalid_queries}'
+        await update.message.reply_text(text)
 
     undef_categories = mylib.PostgresDatabase.get_undefined_categories_amount(
         conn)

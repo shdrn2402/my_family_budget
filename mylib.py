@@ -3,25 +3,26 @@ import csv
 from datetime import datetime, time
 
 import psycopg2
+import re
 from typing import List
 
+# TODO add deletion and update functionality to Spending class
 # TODO add documentation
 # TODO add unit tests for all functions and classes
 # TODO add spendings analysis in bot and desktop app
 
 
 class Note(abc.ABC):
-    def __init__(self, string: str):
+    def __init__(self, **kwargs):
         """
         Initializes an object of the Note class.
 
         :param string: The input string containing the note details.
         """
-        self._string = string
         self._date = datetime.now().replace(microsecond=0)
 
     @classmethod
-    def create_with_date(cls, string: str, note_date: str) -> 'Note':
+    def create_with_date(cls, note_date: str, **kwargs) -> 'Note':
         """
         Alternative constructor with options to specify a custom date.
 
@@ -30,18 +31,9 @@ class Note(abc.ABC):
         '%Y-%m-%d %H:%M:%S'.
         :return: An instance of the Note class with the specified date.
         """
-        _note = cls(string)
+        _note = cls(**kwargs)
         _note._date = datetime.strptime(note_date, '%Y-%m-%d %H:%M:%S')
         return _note
-
-    @property
-    def string(self) -> str:
-        """
-        Returns the string attribute.
-
-        :return: The input string.
-        """
-        return self._string
 
     @property
     def date(self) -> datetime:
@@ -54,6 +46,7 @@ class Note(abc.ABC):
         return self._date
 
     @staticmethod
+    @abc.abstractmethod
     def split_query_string(query_str: str) -> List[str]:
         """
         Splits the input query string into a list of strings
@@ -61,14 +54,10 @@ class Note(abc.ABC):
 
         :return: A list of individual query strings.
         """
-        if ',' in self.string:
-            query_list = self.string.split(',')
-        else:
-            query_list = [self.string]
-        return list(map(str.strip, query_list))
+        pass
 
     @abc.abstractmethod
-    def validate(self, spending: list) -> bool:
+    def validate(self, spending: str) -> dict:
         """
         Validates the note data.
         This method must be implemented in a subclass to define specific
@@ -97,25 +86,36 @@ class Spending(Note):
 [наименование траты - str] [источник траты - str] [сумма траты - float]
 '''
 
-    def __init__(self, spending: str):
+    def __init__(self, **kwargs):
         """
         Initializes an object of the Spending class.
 
         :param spending: A string containing the expense details.
         """
-        super().__init__(spending)
-        self._spendings_list = self.split_query_string()
-
-
-    @staticmethod
-    def validate_format(spending: list) -> None:
-        if len(spending) != 3:
-            raise ValueError(f'Неверный формат данных!{Spending.frmt_msg}')
+        super().__init__(**kwargs)
+        self._spending_name = kwargs.get('spending_name', None)
+        self._spending_source = kwargs.get('spending_source', None)
+        self._spending_cost = kwargs.get('spending_cost', None)
 
     @staticmethod
-    def validate_spending_name(spending: str) -> None:
+    def split_query_string(query_str: str) -> List[str]:
+        """
+        Splits the input query string into a list of strings
+        (handles multiple entries).
+
+        :return: A list of individual query strings.
+        """
+        query_str = re.sub(r'(\d+),(\d+)', r'\1.\2', query_str)
+        if ',' in query_str:
+            query_list = query_str.split(',')
+        else:
+            query_list = [query_str]
+        return list(map(str.strip, query_list))
+
+    @staticmethod
+    def validate_spending_name(name: str) -> None:
         try:
-            float(spending[0])
+            float(name)
         except ValueError:
             pass
         else:
@@ -126,38 +126,53 @@ class Spending(Note):
     @staticmethod
     def validate_cost(spending: str) -> None:
         try:
-            float(spending[2])
+            float(spending)
         except ValueError:
             raise ValueError(
                 f'Третий параметр должен быть числом!{Spending.frmt_msg}'
             )
 
     @staticmethod
-    def validate(spendings: list) -> bool:
+    def validate(query: str) -> dict:
         """
         Validates the spending data (name, source, and cost).
         """
+        *name, source, cost = query.split()
+        full_name = ' '.join(name)
+        if all([full_name, source, cost]):
+            Spending.validate_spending_name(full_name)
+            Spending.validate_cost(cost)
+        else:
+            raise ValueError(f'Не хватает данных!{Spending.frmt_msg}')
+        return {'spending_name': full_name,
+                'spending_source': source,
+                'spending_cost': cost}
+
+    @staticmethod
+    def summarize_spendings(spendings: List['Spending']) -> str:
+        """
+        Returns a summary of the spendings.
+        """
+        total_spendings_ammount = 0
+        total_cost = 0.0
         for spending in spendings:
-            *name, source, amount = spending.split()
-            Spending.validate_format(spending)
-            Spending.validate_spending_name(name)
-            Spending.validate_cost(amount)
-        return True
+            total_spendings_ammount += 1
+            total_cost += spending.spending_cost
+        return f'''Количество покупок: {total_spendings_ammount}
+Общая стоимость покупок: {total_cost}
+'''
 
     @property
-    def spendings_list(self) -> list:
-        return self._spendings_list
+    def spending_name(self) -> str:
+        return self._spending_name.lower()
 
     @property
-    # def spending_name(self) -> str:
-    #     return self._spending_name
-    # @property
-    # def spending_source(self) -> str:
-    #     return self._spending_source
+    def spending_source(self) -> str:
+        return self._spending_source.lower()
 
-    # @property
-    # def spending_cost(self) -> float:
-    #     return float(self._spending_cost)
+    @property
+    def spending_cost(self) -> float:
+        return float(self._spending_cost)
 
     @property
     def spending_date(self) -> datetime:
@@ -170,8 +185,7 @@ class Spending(Note):
         return f'''Цель: {self.spending_name}
 Источник: {self.spending_source}
 Сумма: {self.spending_cost}
-Дата: {self.spending_datetime.strftime('%d-%m-%Y')}'''
-
+Дата: {self.spending_date.strftime('%d-%m-%Y')}'''
 
 
 class Database(abc.ABC):
@@ -380,7 +394,7 @@ class PostgresDatabase(Database):
         cur.close()
 
     def add_data(self,
-                 spending: Spending,
+                 spendings: list['Spending'],
                  buyer_name: str,
                  conn):
 
@@ -410,3 +424,12 @@ class PostgresDatabase(Database):
                             self._purchase_category))
         conn.commit()
         cur.close()
+
+
+# if __name__ == '__main__':
+#     spending_list = [Spending(spending_name="Кофе", spending_source="Кофейня", spending_cost=3.5),
+#                      Spending(spending_name="Хлеб", spending_source="Магазин", spending_cost=2.0),
+#                      Spending(spending_name="Молоко", spending_source="Магазин", spending_cost=1.5)]
+
+#     total_cost = Spending.summarize_spendings(spending_list)
+#     print(total_cost)
