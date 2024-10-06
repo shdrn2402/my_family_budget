@@ -153,6 +153,7 @@ class Spending(Note):
         """
         Returns a summary of the spendings.
         """
+# TODO add grouping by date
         total_spendings_ammount = 0
         total_cost = 0.0
         for spending in spendings:
