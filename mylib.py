@@ -154,12 +154,12 @@ class Spending(Note):
         Returns a summary of the spendings.
         """
 # TODO add grouping by date
-        total_spendings_ammount = 0
+        total_spendings_amount = 0
         total_cost = 0.0
         for spending in spendings:
-            total_spendings_ammount += 1
+            total_spendings_amount += 1
             total_cost += spending.spending_cost
-        return f'''Количество покупок: {total_spendings_ammount}
+        return f'''Количество покупок: {total_spendings_amount}
 Общая стоимость покупок: {total_cost}
 '''
 
