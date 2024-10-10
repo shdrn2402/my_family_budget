@@ -48,10 +48,11 @@ class Note(abc.ABC):
     @staticmethod
     @abc.abstractmethod
     def split_query_string(query_str: str) -> List[str]:
-        """
+                """
         Splits the input query string into a list of strings
         (handles multiple entries).
 
+        :param query_str: The input query string.
         :return: A list of individual query strings.
         """
         pass
@@ -60,10 +61,9 @@ class Note(abc.ABC):
     def validate(self, spending: str) -> dict:
         """
         Validates the note data.
-        This method must be implemented in a subclass to define specific
-        validation logic.
 
-        :return: True if the data is valid, otherwise False.
+        :param spending: The input spending data as a string.
+        :return: A dictionary containing validated spending data.
         """
         pass
 
@@ -90,7 +90,7 @@ class Spending(Note):
         """
         Initializes an object of the Spending class.
 
-        :param spending: A string containing the expense details.
+        :param kwargs: Keyword arguments containing spending details.
         """
         super().__init__(**kwargs)
         self._spending_name = kwargs.get('spending_name', None)
@@ -103,6 +103,7 @@ class Spending(Note):
         Splits the input query string into a list of strings
         (handles multiple entries).
 
+        :param query_str: The input query string to split.
         :return: A list of individual query strings.
         """
         query_str = re.sub(r'(\d+),(\d+)', r'\1.\2', query_str)
@@ -114,6 +115,11 @@ class Spending(Note):
 
     @staticmethod
     def validate_spending_name(name: str) -> None:
+        """
+        Validates the spending name to ensure it is not a number.
+
+        :param name: The name of the spending to validate.
+        """
         try:
             float(name)
         except ValueError:
@@ -125,6 +131,11 @@ class Spending(Note):
 
     @staticmethod
     def validate_cost(spending: str) -> None:
+        """
+        Validates the cost to ensure it is a valid number.
+
+        :param spending: The cost to validate.
+        """
         try:
             float(spending)
         except ValueError:
@@ -136,6 +147,9 @@ class Spending(Note):
     def validate(query: str) -> dict:
         """
         Validates the spending data (name, source, and cost).
+
+        :param query: The query string to validate.
+        :return: A dictionary with validated spending data.
         """
         *name, source, cost = query.split()
         full_name = ' '.join(name)
@@ -152,6 +166,9 @@ class Spending(Note):
     def summarize_spendings(spendings: List['Spending']) -> str:
         """
         Returns a summary of the spendings.
+
+        :param spendings: A list of spending objects to summarize.
+        :return: A summary string of the total number and cost of spendings.
         """
 # TODO add grouping by date
         total_spendings_amount = 0
