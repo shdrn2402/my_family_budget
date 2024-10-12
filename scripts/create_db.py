@@ -4,7 +4,10 @@ from dotenv import load_dotenv
 import os
 
 # Настройка логирования
-logging.basicConfig(filename='app.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(filename='app.log',
+                    level=logging.INFO, 
+                    encoding='utf-8',
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Загрузка переменных окружения
@@ -72,7 +75,7 @@ def create_table(conn, table_name, create_table_sql):
 
 def main():
     # Создаем базу данных, если она не существует
-    create_database("budget")
+    create_database("btest")
 
     # Подключаемся к базе данных
     conn = psycopg2.connect(
