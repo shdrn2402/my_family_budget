@@ -1,16 +1,22 @@
 import abc
 import csv
+import logging
+import re
 from datetime import datetime, time
+from typing import List
 
 import psycopg2
-import re
-from typing import List
 
 # TODO add deletion and update functionality to Spending class
 # TODO add documentation
 # TODO add unit tests for all functions and classes
 # TODO add spendings analysis in bot and desktop app
 
+logging.basicConfig(filename='logs/app.log',
+                    level=logging.INFO,
+                    encoding='utf-8',
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 class Note(abc.ABC):
     def __init__(self, **kwargs):
@@ -206,242 +212,66 @@ class Spending(Note):
 Дата: {self.spending_date.strftime('%d-%m-%Y')}'''
 
 
-class Database(abc.ABC):
-    """Abstract class for working with expense data.
+from datetime import datetime
 
-    Abstract methods:
-        __init__(self, spending: Spending,
-                 buyer_name
-                 : str): Class constructor.
-        prepare_data(self): Prepares data for insertion to database.
-        add_data_to_csv(self, **kwargs): Adds data to database.
+from datetime import datetime
+
+from datetime import datetime
+
+from datetime import datetime
+
+from datetime import datetime
+
+class User:
     """
-    @abc.abstractmethod
-    def __init__(self, spending: Spending, buyer_name: str):
-        """
-        Initializes an object of the DataBase class.
+    Class representing a user.
 
-        Parameters:
-        spending: An object of the Spending class
-        buyer_name
-        : str
-            User's name.
-        """
-        self._spending = spending
-        self._buyer_name = buyer_name
-
-    @abc.abstractmethod
-    def prepare_data(self):
-        '''Absract method for preparing data for insertion to database.'''
-        pass
-
-    @abc.abstractmethod
-    def add_data(self, **kwargs):
-        '''Absract method for adding data to database.'''
-        pass
-
-    @property
-    def buyer_name(self) -> str:
-        andrey = ['Andrew', 'Andrey', 'Андрей', '🇮🇱Andrey🇮🇱']
-        ekaterina = ['Ekaterina', 'Екатерина']
-        if self._buyer_name in andrey:
-            return 'Andrey'
-        elif self._buyer_name in ekaterina:
-            return 'Ekaterina'
-        else:
-            return self._buyer_name
-
-
-class CsvDatabase(Database):
-    """Class for adding expense data to a CSV file.
-
-    Methods:
-    __init__(self,
-            spending: Spending,
-            buyer_name
-            : str): Class constructor.
-    prepare_data(self): Prepares data for CSV writing.
-    add_datav(self, csv_file_path): Adds data to a CSV file.
+    Attributes:
+        id: Unique user identifier (Telegram ID).
+        family_id: Family identifier. For the main user, it matches id.
+        first_name: User's first name. Defaults to 'undefined' for additional users.
+        language: The language used by the user. Defaults to 'undefined' for additional users.
+        created_at: The date the user object was created.
+        verified: Whether the user is verified (fully registered).
+        main_user: Indicates if the user is the main user (has full rights).
+        read_only: Indicates if the user has read-only access.
     """
 
-    def __init__(self, spending: Spending, buyer_name: str):
+    def __init__(self, id: int, first_name: str, language: str):
         """
-        Initializes an object of the CsvDatabase class.
+        Initializes a main user (verified user by default).
 
-        Parameters:
-        spending (Spending): An object of the Spending class.
-        buyer_name
-        : str
-            User's name.
+        :param id: Unique user identifier (Telegram ID).
+        :param first_name: The user's first name.
+        :param language: The user's language.
         """
-        super().__init__(spending, buyer_name
-                         )
-        self._spending_datetime = self._spending.spending_datetime
-        self._spending_year = self._spending_datetime.strftime('%Y')
-        self._spending_month = self._spending_datetime.strftime('%m')
-        self._spending_day = self._spending_datetime.strftime('%d')
-        self._spending_weekday = self._spending_datetime.strftime('%a')
-        self._spending_date = self._spending_datetime.date()
-        spending_time = self._spending_datetime.time()
-        self._spending_time = time(spending_time.hour,
-                                   spending_time.minute)
-
-    def prepare_data(self) -> list:
-        return [
-            self._spending.spending_name,
-            self._spending.spending_source,
-            self._spending.spending_cost,
-            self._spending_time,
-            self._spending_date,
-            self._spending_year,
-            self._spending_month,
-            self._spending_day,
-            self._spending_weekday,
-            self.buyer_name
-        ]
-
-    def add_data(self, csv_file_path: str) -> None:
-        data = self.prepare_data()
-        try:
-            with open(
-                csv_file_path,
-                mode='a',
-                newline='',
-                encoding='utf-8-sig'
-            ) as file:
-                writer = csv.writer(file)
-                writer.writerow(data)
-        except FileNotFoundError:
-            raise FileNotFoundError(f'Нет такого файла: {csv_file_path}')
-        except PermissionError:
-            raise PermissionError(f'Нет доступа к файлу: {csv_file_path}')
-        except Exception as error:
-            raise error
+        self._id = id
+        self._family_id = id  # For the main user, family_id is always equal to id
+        self._first_name = first_name
+        self._language = language
+        self._created_at = datetime.now().replace(microsecond=0)
+        self._verified = True  # Main user is always verified
+        self._main_user = True  # Main user flag is always True for the main user
+        self._read_only = False  # Main user has full rights, so read_only is False
 
 
-class PostgresDatabase(Database):
+    @classmethod
+    def create_additional_user(cls, id: int, family_id: int, first_name: str = "undefined", language: str = "undefined", read_only: bool = True):
+        """
+        Alternative constructor for creating an additional user.
 
-    def __init__(self, **kwargs):
-        self._dbname = kwargs.get('dbname')
-        self._user = kwargs.get('user')
-        self._password = kwargs.get('password')
-        self._host = kwargs.get('host')
-        self._port = kwargs.get('port')
-        self._connection = None
-        self._purchase_category = 'Undefined'
-        self._purchase_subcategory = 'Undefined'
-        self._purchase_source = 'Undefined'
+        :param id: Unique user identifier (Telegram ID).
+        :param family_id: The family identifier of the main user.
+        :param first_name: The user's first name. Defaults to 'undefined'.
+        :param language: The user's language. Defaults to 'undefined'.
+        :param read_only: Indicates if the user has read-only access. Defaults to True for additional users.
+        :return: A new User object for an additional user.
+        """
+        verified = first_name != "undefined" and language != "undefined"  # Verified if full data is provided
+        return cls(id=id, family_id=family_id, first_name=first_name, language=language, main_user=False, read_only=read_only, verified=verified)
 
-    @property
-    def get_connection(self):
-        if self._connection is None:
-            self._connection = psycopg2.connect(
-                dbname=self._dbname,
-                user=self._user,
-                password=self._password,
-                host=self._host,
-                port=self._port
-            )
-        return self._connection
 
-    @staticmethod
-    def validate_user(tg_id: str, conn) -> bool:
-        cur = conn.cursor()
-        query = '''
-        SELECT EXISTS (
-            SELECT 1
-            FROM budget.users
-            WHERE tg_id = %s
-        );
-        '''
-        cur.execute(query, (tg_id,))
-        user_exists = cur.fetchone()
-        cur.close()
-        return user_exists[0]
 
-    @staticmethod
-    def get_undefined_categories_amount(conn) -> int:
-        cur = conn.cursor()
-        query = '''
-        SELECT COUNT(*)
-        FROM budget.budget
-        WHERE purchase_subcategory = 'Undefined';
-        '''
-        cur.execute(query)
-        count_undefined_categories = cur.fetchone()
-        cur.close()
-        return count_undefined_categories[0]
-
-    def prepare_data(self,
-                     purchase_name: str,
-                     source_name: str,
-                     conn):
-        cur = conn.cursor()
-        query = '''
-        SELECT purchase_subcategory
-        FROM budget.budget
-        WHERE purchase_name = %s;
-        '''
-        cur.execute(query, (purchase_name,))
-        existing_category = cur.fetchone()
-        if existing_category:
-            self._purchase_subcategory = existing_category[0]
-
-        query = '''
-        SELECT  category_name
-        FROM budget.purchase_category_subcategory
-        WHERE subcategory_name = %s;
-        '''
-        cur.execute(query, (self._purchase_subcategory,))
-        category_name = cur.fetchone()
-        if category_name:
-            self._purchase_category = category_name[0]
-
-        query = '''
-        SELECT source_name_db
-        FROM budget.sources
-        WHERE source_name = %s;
-        '''
-        cur.execute(query, (source_name,))
-        source_name_db = cur.fetchone()
-        if not source_name_db:
-            raise ValueError(f'Недействительный источник трат: {source_name}')
-        else:
-            self._purchase_source = source_name_db[0].capitalize()
-
-        cur.close()
-
-    def add_data(self,
-                 spendings: list['Spending'],
-                 buyer_name: str,
-                 conn):
-
-        self.prepare_data(spending.spending_name,
-                          spending.spending_source,
-                          conn)
-        cur = conn.cursor()
-        query = '''
-        INSERT INTO budget.budget (
-            purchase_name,
-            purchase_subcategory,
-            price,
-            financing_source,
-            purchase_date,
-            buyers_name,
-            purchase_category)
-            VALUES (%s, %s, %s, %s, %s, %s, %s);
-            '''
-        formatted_datetime = spending.spending_datetime.strftime(
-            '%Y-%m-%d %H:%M:%S')
-        cur.execute(query, (spending.spending_name,
-                            self._purchase_subcategory,
-                            spending.spending_cost,
-                            self._purchase_source,
-                            formatted_datetime,
-                            buyer_name,
-                            self._purchase_category))
-        conn.commit()
-        cur.close()
 
 
 # if __name__ == '__main__':

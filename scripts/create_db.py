@@ -4,8 +4,8 @@ from dotenv import load_dotenv
 import os
 
 # Настройка логирования
-logging.basicConfig(filename='app.log',
-                    level=logging.INFO, 
+logging.basicConfig(filename='logs/app.log',
+                    level=logging.INFO,
                     encoding='utf-8',
                     format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -29,6 +29,7 @@ def create_database(db_name):
         db_name: Имя создаваемой базы данных.
     """
 
+    # Подключение к базе данных postgres для создания новой базы данных
     conn = psycopg2.connect(
         database="postgres",
         user=USER,
@@ -36,6 +37,9 @@ def create_database(db_name):
         host=HOST,
         port=PORT
     )
+
+    # Отключение транзакционного блока
+    conn.autocommit = True
     cursor = conn.cursor()
 
     try:
@@ -50,23 +54,34 @@ def create_database(db_name):
         conn.close()
 
 
-def create_table(conn, table_name, create_table_sql):
+def create_table(conn, table_name, sql_query):
     """
-    Создает таблицу, если она еще не существует.
+    Проверяет наличие таблицы и создает ее, если она не существует.
 
     Args:
         conn: Соединение с базой данных.
         table_name: Имя создаваемой таблицы.
-        create_table_sql: SQL-запрос для создания таблицы.
+        sql_query: SQL-запрос для создания таблицы.
     """
 
     cursor = conn.cursor()
 
     try:
-        cursor.execute(create_table_sql)
-        logger.info(f"Таблица {table_name} создана успешно.")
-    except psycopg2.errors.DuplicateTable:
-        logger.info(f"Таблица {table_name} уже существует.")
+        # Проверка существования таблицы
+        cursor.execute(f"""SELECT EXISTS (SELECT FROM information_schema.tables
+                       WHERE table_name = '{table_name}');""")
+        exists = cursor.fetchone()[0]
+
+        if exists:
+            logger.info(f"Таблица {table_name} уже существует.")
+        else:
+            # Установка схемы по умолчанию
+            cursor.execute("SET search_path TO budget;")
+
+            # Создание таблицы
+            cursor.execute(sql_query)
+            conn.commit()  # Сохранение изменений в базе данных
+            logger.info(f"Таблица {table_name} создана успешно.")
     except Exception as e:
         logger.error(f"Ошибка при создании таблицы {table_name}: {str(e)}")
     finally:
@@ -75,7 +90,7 @@ def create_table(conn, table_name, create_table_sql):
 
 def main():
     # Создаем базу данных, если она не существует
-    create_database("btest")
+    create_database(DBNAME)
 
     # Подключаемся к базе данных
     conn = psycopg2.connect(
