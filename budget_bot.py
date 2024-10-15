@@ -85,17 +85,43 @@ async def telegram_start_text(update: Update,
                               context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send welcome messages to the user."""
 
-    user_first_name = (
-        update.effective_user.first_name
-        if update.effective_user
-        else 'Added from Telegram'
-    )
+    if update.effective_user:
+        if update.effective_user.first_name:
+            user_first_name = update.effective_user.first_name
+        elif update.effective_user.username:
+            user_first_name = update.effective_user.username
+        else:
+            user_first_name = 'Added from Telegram'
+    else:
+        user_first_name = 'Added from Telegram'
+
     text = f'''Привет, {user_first_name},
 Это бот для ведения сейного бюджета с помощью telegram.
 В данный момент это закрытый бот.
 Функциональность ограничена для тестирования.
 Используй /help для получения списка команд.'''
+
     await update.message.reply_text(text)
+
+
+def check_update_keys(update: Update, required_keys: list) -> dict:
+    """
+    Checks if the specified keys are present in the update object and retrieves their values.
+
+    :param update: The update object to check.
+    :param required_keys: A list of required keys to check for.
+    :return: A dictionary with keys and their values or None if not present.
+    """
+    key_values = {}
+
+    for key in required_keys:
+        try:
+            # Пробуем получить значение по ключу из объекта update
+            key_values[key] = eval(f"update.{key}")
+        except AttributeError:
+            key_values[key] = None
+
+    return key_values
 
 
 async def processor(update: Update,
@@ -108,11 +134,16 @@ async def processor(update: Update,
     else:
         raise Exception('Chat ID is None')
 
-    user_first_name = (
-        update.effective_user.first_name
-        if update.effective_user
-        else 'Added from Telegram'
-    )
+    if update.effective_user:
+        if update.effective_user.first_name:
+            user_first_name = update.effective_user.first_name
+        elif update.effective_user.username:
+            user_first_name = update.effective_user.username
+        else:
+            user_first_name = 'Added from Telegram'
+    else:
+        user_first_name = 'Added from Telegram'
+
     conn = mylib.PostgresDatabase(dbname=DBNAME,
                                   user=USER,
                                   password=PASSWORD,
@@ -129,7 +160,21 @@ async def processor(update: Update,
     for query in query_list:
         try:
             valid_data = mylib.Spending.validate(query)
-            spending = mylib.Spending(**valid_data)
+            required_keys = ['spending_name',
+                             'spending_source',
+                             'spending_cost']
+            if not all(key in valid_data for key in required_keys):
+                raise KeyError(
+                    f"""Отсутствует один или несколько обязательных ключей:
+                    {required_keys}"""
+                    )
+
+            # Создание объекта с проверенными значениями
+            spending = mylib.Spending(
+                spending_name=valid_data['spending_name'],
+                spending_source=valid_data['spending_source'],
+                spending_cost=valid_data['spending_cost']
+            )
             data_to_insert_to_db.append(spending)
         except Exception as err:
             invalid_queries.append(query)

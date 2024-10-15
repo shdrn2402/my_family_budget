@@ -3,7 +3,7 @@ import csv
 import logging
 import re
 from datetime import datetime, time
-from typing import List
+from typing import List, Optional
 
 import psycopg2
 
@@ -17,6 +17,7 @@ logging.basicConfig(filename='logs/app.log',
                     encoding='utf-8',
                     format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
 
 class Note(abc.ABC):
     def __init__(self, **kwargs):
@@ -54,7 +55,7 @@ class Note(abc.ABC):
     @staticmethod
     @abc.abstractmethod
     def split_query_string(query_str: str) -> List[str]:
-                """
+        """
         Splits the input query string into a list of strings
         (handles multiple entries).
 
@@ -88,20 +89,23 @@ class Spending(Note):
     """Class to represent information about expenses."""
 
     frmt_msg = '''
-Для добавления расходов необходимо использовать следующий формат:
-[наименование траты - str] [источник траты - str] [сумма траты - float]
-'''
+    Для добавления расходов необходимо использовать следующий формат:
+    [наименование траты - str] [источник траты - str] [сумма траты - float]
+    '''
 
-    def __init__(self, **kwargs):
+    def __init__(self, spending_name: str, spending_source: str,
+                 spending_cost: float, **kwargs):
         """
         Initializes an object of the Spending class.
 
-        :param kwargs: Keyword arguments containing spending details.
+        :param spending_name: Name of the spending.
+        :param spending_source: Source of the spending.
+        :param spending_cost: Cost of the spending.
         """
-        super().__init__(**kwargs)
-        self._spending_name = kwargs.get('spending_name', None)
-        self._spending_source = kwargs.get('spending_source', None)
-        self._spending_cost = kwargs.get('spending_cost', None)
+        super().__init__(**kwargs)  # Initialize parent class (Note) with remaining kwargs
+        self._spending_name = spending_name
+        self._spending_source = spending_source
+        self._spending_cost = spending_cost
 
     @staticmethod
     def split_query_string(query_str: str) -> List[str]:
@@ -120,53 +124,36 @@ class Spending(Note):
         return list(map(str.strip, query_list))
 
     @staticmethod
-    def validate_spending_name(name: str) -> None:
-        """
-        Validates the spending name to ensure it is not a number.
-
-        :param name: The name of the spending to validate.
-        """
-        try:
-            float(name)
-        except ValueError:
-            pass
-        else:
-            raise ValueError(
-                f'Первый параметр не может быть числом!{Spending.frmt_msg}'
-            )
-
-    @staticmethod
-    def validate_cost(spending: str) -> None:
-        """
-        Validates the cost to ensure it is a valid number.
-
-        :param spending: The cost to validate.
-        """
-        try:
-            float(spending)
-        except ValueError:
-            raise ValueError(
-                f'Третий параметр должен быть числом!{Spending.frmt_msg}'
-            )
-
-    @staticmethod
     def validate(query: str) -> dict:
         """
         Validates the spending data (name, source, and cost).
 
         :param query: The query string to validate.
         :return: A dictionary with validated spending data.
+        :raises ValueError: If any of the required fields are missing or invalid.
         """
         *name, source, cost = query.split()
         full_name = ' '.join(name)
-        if all([full_name, source, cost]):
-            Spending.validate_spending_name(full_name)
-            Spending.validate_cost(cost)
-        else:
-            raise ValueError(f'Не хватает данных!{Spending.frmt_msg}')
-        return {'spending_name': full_name,
-                'spending_source': source,
-                'spending_cost': cost}
+
+        if not full_name:
+            raise ValueError(f'''Наименование траты не может быть пустым!
+                             {Spending.frmt_msg}''')
+        
+        try:
+            float(cost)
+        except ValueError:
+            raise ValueError(f'''Сумма траты должна быть числом!
+                             {Spending.frmt_msg}''')
+
+        if not source:
+            raise ValueError(f'''Источник траты не может быть пустым!
+                             {Spending.frmt_msg}''')
+
+        return {
+            'spending_name': full_name,
+            'spending_source': source,
+            'spending_cost': float(cost)
+        }
 
     @staticmethod
     def summarize_spendings(spendings: List['Spending']) -> str:
@@ -212,16 +199,6 @@ class Spending(Note):
 Дата: {self.spending_date.strftime('%d-%m-%Y')}'''
 
 
-from datetime import datetime
-
-from datetime import datetime
-
-from datetime import datetime
-
-from datetime import datetime
-
-from datetime import datetime
-
 class User:
     """
     Class representing a user.
@@ -229,34 +206,44 @@ class User:
     Attributes:
         id: Unique user identifier (Telegram ID).
         family_id: Family identifier. For the main user, it matches id.
-        first_name: User's first name. Defaults to 'undefined' for additional users.
-        language: The language used by the user. Defaults to 'undefined' for additional users.
+        first_name: User's first name.
+        Defaults to 'undefined' for additional users.
+        language: The language used by the user.
+        Defaults to 'undefined' for additional users.
         created_at: The date the user object was created.
         verified: Whether the user is verified (fully registered).
         main_user: Indicates if the user is the main user (has full rights).
         read_only: Indicates if the user has read-only access.
     """
 
-    def __init__(self, id: int, first_name: str, language: str):
+    def __init__(self, id: int, first_name: str, language: str,
+                 family_id: Optional[int] = None, verified: bool = True,
+                 main_user: bool = True, read_only: bool = False):
         """
-        Initializes a main user (verified user by default).
+        Initializes a main user (or additional user if specified).
 
         :param id: Unique user identifier (Telegram ID).
         :param first_name: The user's first name.
         :param language: The user's language.
+        :param family_id: The family identifier of the user.
+        :param verified: Whether the user is verified. Defaults to True.
+        :param main_user: Whether the user is the main user. Defaults to True for main users.
+        :param read_only: Whether the user has read-only access. Defaults to False for main users.
         """
         self._id = id
-        self._family_id = id  # For the main user, family_id is always equal to id
         self._first_name = first_name
         self._language = language
         self._created_at = datetime.now().replace(microsecond=0)
-        self._verified = True  # Main user is always verified
-        self._main_user = True  # Main user flag is always True for the main user
-        self._read_only = False  # Main user has full rights, so read_only is False
-
+        self._family_id = family_id if family_id is not None else id  # For the main user, family_id is equal to id by default
+        self._verified = verified
+        self._main_user = main_user
+        self._read_only = read_only
 
     @classmethod
-    def create_additional_user(cls, id: int, family_id: int, first_name: str = "undefined", language: str = "undefined", read_only: bool = True):
+    def create_additional_user(cls, id: int, family_id: int,
+                               first_name: str = "undefined",
+                               language: str = "undefined",
+                               read_only: bool = True):
         """
         Alternative constructor for creating an additional user.
 
@@ -268,9 +255,49 @@ class User:
         :return: A new User object for an additional user.
         """
         verified = first_name != "undefined" and language != "undefined"  # Verified if full data is provided
-        return cls(id=id, family_id=family_id, first_name=first_name, language=language, main_user=False, read_only=read_only, verified=verified)
+        return cls(id=id, first_name=first_name, language=language,
+                   family_id=family_id, main_user=False, read_only=read_only,
+                   verified=verified)
 
+    @property
+    def id(self) -> int:
+        """Returns the user's unique identifier."""
+        return self._id
 
+    @property
+    def family_id(self) -> int:
+        """Returns the user's family ID."""
+        return self._family_id
+
+    @property
+    def first_name(self) -> str:
+        """Returns the user's first name."""
+        return self._first_name
+
+    @property
+    def language(self) -> str:
+        """Returns the user's language."""
+        return self._language
+
+    @property
+    def created_at(self) -> datetime:
+        """Returns the timestamp when the user was created."""
+        return self._created_at
+
+    @property
+    def verified(self) -> bool:
+        """Returns whether the user is verified."""
+        return self._verified
+
+    @property
+    def main_user(self) -> bool:
+        """Returns whether the user is the main user."""
+        return self._main_user
+
+    @property
+    def read_only(self) -> bool:
+        """Returns whether the user has read-only access."""
+        return self._read_only
 
 
 
