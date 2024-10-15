@@ -300,6 +300,26 @@ class User:
         return self._read_only
 
 
+    @classmethod
+    def validate_main_user(cls, update: Update) -> dict:
+        """
+        Validates the main user's data and retrieves it as a dictionary.
+
+        :param update: The update object containing the main user's data.
+        :return: A dictionary containing the main user's data.
+        """
+        pass
+
+
+    @classmethod
+    def validate_additional_user(cls, update: Update, context: Context) -> dict:
+        """
+        Validates the additional user's data and retrieves it as a dictionary.
+
+        :param update: The update object containing the additional user's data.
+        :return: A dictionary containing the additional user's data.
+        """
+        pass
 
 # if __name__ == '__main__':
 #     spending_list = [Spending(spending_name="Кофе", spending_source="Кофейня", spending_cost=3.5),

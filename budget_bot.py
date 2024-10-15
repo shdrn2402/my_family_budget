@@ -144,13 +144,20 @@ async def processor(update: Update,
     else:
         user_first_name = 'Added from Telegram'
 
+    if update.message:
+        message_text = update.message.text
+        if mylib.PostgresDatabase.validate_user(str(chat_id), conn):
+            query_list = mylib.Spending.split_query_string(message_text)
+    else:
+        raise Exception('Message is None')
+
+
     conn = mylib.PostgresDatabase(dbname=DBNAME,
                                   user=USER,
                                   password=PASSWORD,
                                   host=HOST,
                                   port=PORT).get_connection
-    if mylib.PostgresDatabase.validate_user(str(chat_id), conn):
-        query_list = mylib.Spending.split_query_string(update.message.text)
+
     else:
         text = '''Понимаю любопытсво, но это личная информация.
 Необходимо добавить ваш ID в список разрешенных.
