@@ -1,11 +1,12 @@
 import abc
-import csv
 import logging
 import re
 from datetime import datetime, time
 from typing import List, Optional
 
 import psycopg2
+from telegram import Update
+from telegram.ext import ContextTypes
 
 # TODO add deletion and update functionality to Spending class
 # TODO add documentation
@@ -299,7 +300,6 @@ class User:
         """Returns whether the user has read-only access."""
         return self._read_only
 
-
     @classmethod
     def validate_main_user(cls, update: Update) -> dict:
         """
@@ -312,7 +312,8 @@ class User:
 
 
     @classmethod
-    def validate_additional_user(cls, update: Update, context: Context) -> dict:
+    def validate_additional_user(cls, update: Update,
+                                 context: ContextTypes.DEFAULT_TYPE) -> dict:
         """
         Validates the additional user's data and retrieves it as a dictionary.
 

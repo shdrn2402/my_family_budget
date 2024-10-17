@@ -25,6 +25,7 @@ logging.basicConfig(
     encoding='utf-8',
     level=logging.WARNING)
 
+logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 DBNAME = os.environ.get('DBNAME')
@@ -34,17 +35,35 @@ PORT = os.environ.get('PORT')
 HOST = os.environ.get('HOST')
 
 
+def validate_update(update: Update) -> dict:
+    """
+    Validate essential parts of the update object and provide a dictionary of results.
+    """
+    is_user_valid = update.effective_user is not None
+    is_chat_valid = update.effective_chat is not None
+    is_message_valid = update.message is not None
+
+    # Если есть пользователь, проверяем имя или никнейм
+    if is_message_valid:
+        user_name = (
+            update.effective_user.first_name or
+            update.effective_user.username or
+            'Added from Telegram'
+        )
+    else:
+        user_name = 'Added from Telegram'
+
+    return {
+        'is_user_valid': is_user_valid,
+        'is_chat_valid': is_chat_valid,
+        'is_message_valid': is_message_valid,
+        'user_name': user_name  # Имя пользователя или никнейм
+    }
+
+
 def start_dashboard():
     print('Dashboard started...')
     subprocess.Popen(['python', 'dashboard.py'])
-
-
-# def get_query_list(query_str: str) -> list:
-#     if ',' in query_str:
-#         query_list = query_str.split(',')
-#     else:
-#         query_list = [query_str]
-#     return list(map(str.strip, query_list))
 
 
 async def telegram_help_text(update: Update,
@@ -104,66 +123,47 @@ async def telegram_start_text(update: Update,
     await update.message.reply_text(text)
 
 
-def check_update_keys(update: Update, required_keys: list) -> dict:
-    """
-    Checks if the specified keys are present in the update object and retrieves their values.
-
-    :param update: The update object to check.
-    :param required_keys: A list of required keys to check for.
-    :return: A dictionary with keys and their values or None if not present.
-    """
-    key_values = {}
-
-    for key in required_keys:
-        try:
-            # Пробуем получить значение по ключу из объекта update
-            key_values[key] = eval(f"update.{key}")
-        except AttributeError:
-            key_values[key] = None
-
-    return key_values
-
-
 async def processor(update: Update,
                     context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Processes the incoming update, validates it, and performs actions based on the content.
+    """
 
-    if update.effective_chat is not None:
-        chat_id = update.effective_chat.id
-        data_to_insert_to_db = []
-        invalid_queries = []
-    else:
-        raise Exception('Chat ID is None')
+    # Validate update structure
+    valid_update = validate_update(update)
 
-    if update.effective_user:
-        if update.effective_user.first_name:
-            user_first_name = update.effective_user.first_name
-        elif update.effective_user.username:
-            user_first_name = update.effective_user.username
-        else:
-            user_first_name = 'Added from Telegram'
-    else:
-        user_first_name = 'Added from Telegram'
+    if not valid_update['is_chat_valid']:
+        logger.error('Ошибка! Не удалось определить Chat ID.')
+        return
 
-    if update.message:
-        message_text = update.message.text
-        if mylib.PostgresDatabase.validate_user(str(chat_id), conn):
-            query_list = mylib.Spending.split_query_string(message_text)
-    else:
-        raise Exception('Message is None')
+    if not valid_update['is_message_valid']:
+        logger.error('Ошибка! Отсутствует текст сообщения.')
+        return
 
+    chat_id = update.effective_chat.id
+    user_name = valid_update['user_name']
+    message_text = update.message.text
 
+    # Database connection
     conn = mylib.PostgresDatabase(dbname=DBNAME,
                                   user=USER,
                                   password=PASSWORD,
                                   host=HOST,
                                   port=PORT).get_connection
 
-    else:
-        text = '''Понимаю любопытсво, но это личная информация.
-Необходимо добавить ваш ID в список разрешенных.
-Спасибо за понимание.'''
+    # Validate user in database
+    if not mylib.PostgresDatabase.validate_user(str(chat_id), conn):
+        text = '''Понимаю любопытство, но это личная информация.
+        Необходимо добавить ваш ID в список разрешенных.
+        Спасибо за понимание.'''
         await update.message.reply_text(text)
         return
+
+    # Process spending queries
+    query_list = mylib.Spending.split_query_string(message_text)
+    data_to_insert_to_db = []
+    invalid_queries = []
+
     for query in query_list:
         try:
             valid_data = mylib.Spending.validate(query)
@@ -185,7 +185,7 @@ async def processor(update: Update,
             data_to_insert_to_db.append(spending)
         except Exception as err:
             invalid_queries.append(query)
-            logging.error(err)
+            logger.error(err)
             await update.message.reply_text(f'Ошибка! Расход не учтен. {err}')
 
     if data_to_insert_to_db:
