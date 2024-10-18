@@ -15,8 +15,14 @@ load_dotenv()
 
 # Получение значений переменных окружения
 DBNAME = os.getenv('DBNAME')
-USER = os.getenv('USER')
-PASSWORD = os.getenv('PASSWORD')
+ROOT_USER = os.getenv('ROOT_USER')
+ROOT_PASSWORD = os.getenv('ROOT_PASSWORD')
+MAIN_USER = os.getenv('MAIN_USER')
+MAIN_USER_PASSWORD = os.getenv('MAIN_USER_PASSWORD')
+COMMON_USER = os.getenv('COMMON_USER')
+COMMON_USER_PASSWORD = os.getenv('COMMON_USER_PASSWORD')
+READ_ONLY_USER = os.getenv('READ_ONLY_USER')
+READ_ONLY_USER_PASSWORD = os.getenv('READ_ONLY_USER_PASSWORD')
 HOST = os.getenv('HOST')
 PORT = os.getenv('PORT')
 
