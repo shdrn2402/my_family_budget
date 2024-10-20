@@ -4,29 +4,29 @@ from dotenv import load_dotenv
 import os
 import re
 
-# Настройка логирования
-logging.basicConfig(filename='logs/app.log',
+# Logging setup
+logging.basicConfig(filename="logs/app.log",
                     level=logging.INFO,
-                    encoding='utf-8',
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+                    encoding="utf-8",
+                    format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Загрузка переменных окружения
+# Load environment variables
 load_dotenv()
 
-# Получение значений переменных окружения
-ROOT_DBNAME = os.getenv('ROOT_DBNAME')
-DBNAMETOCREATE = os.getenv('NEW_DBNAME')
-ROOT_USER = os.getenv('ROOT_USER')
-ROOT_PASSWORD = os.getenv('ROOT_PASSWORD')
-MAIN_USER = os.getenv('MAIN_USER')
-MAIN_USER_PASSWORD = os.getenv('MAIN_USER_PASSWORD')
-COMMON_USER = os.getenv('COMMON_USER')
-COMMON_USER_PASSWORD = os.getenv('COMMON_USER_PASSWORD')
-READ_ONLY_USER = os.getenv('READ_ONLY_USER')
-READ_ONLY_USER_PASSWORD = os.getenv('READ_ONLY_USER_PASSWORD')
-HOST = os.getenv('HOST')
-PORT = os.getenv('PORT')
+# Retrieve environment variables
+ROOT_DBNAME = os.getenv("ROOT_DBNAME")
+DBNAMETOCREATE = os.getenv("NEW_DBNAME")
+ROOT_USER = os.getenv("ROOT_USER")
+ROOT_PASSWORD = os.getenv("ROOT_PASSWORD")
+MAIN_USER = os.getenv("MAIN_USER")
+MAIN_USER_PASSWORD = os.getenv("MAIN_USER_PASSWORD")
+COMMON_USER = os.getenv("COMMON_USER")
+COMMON_USER_PASSWORD = os.getenv("COMMON_USER_PASSWORD")
+READ_ONLY_USER = os.getenv("READ_ONLY_USER")
+READ_ONLY_USER_PASSWORD = os.getenv("READ_ONLY_USER_PASSWORD")
+HOST = os.getenv("HOST")
+PORT = os.getenv("PORT")
 
 
 def create_database(root_db_name, root_user, root_password, host, port,
@@ -35,7 +35,8 @@ def create_database(root_db_name, root_user, root_password, host, port,
     Creates a new database if it does not already exist.
 
     Args:
-        root_db_name: The name of the default system database used for administrative tasks.
+        root_db_name: The name of the default system database
+        used for administrative tasks.
         root_user: The superuser's username to connect to the database.
         root_password: The superuser's password for the connection.
         host: The database server's host.
@@ -43,10 +44,10 @@ def create_database(root_db_name, root_user, root_password, host, port,
         db_name_to_create: The name of the database to be created.
     """
 
-    logger.info(f"Creating database {db_name_to_create}...")
+    logger.info("Creating database %s...", db_name_to_create)
 
-    # Checks the database name
-    if re.match(r'^[a-zA-Z0-9_]+$', db_name_to_create):
+    # Check the database name
+    if re.match(r"^[a-zA-Z0-9_]+$", db_name_to_create):
         # Connect to an existing database
         with psycopg.connect(
             dbname=root_db_name,
@@ -62,18 +63,31 @@ def create_database(root_db_name, root_user, root_password, host, port,
                 # Execute a command: this creates a new database
                 try:
                     cursor.execute(f"CREATE DATABASE {db_name_to_create}")
-                    logger.info(f"Database {db_name_to_create} created successfully.")
+                    logger.info(
+                        "Database %s created successfully.",
+                        db_name_to_create
+                    )
                 except psycopg.errors.DuplicateDatabase:
-                    logger.info(f"Database {db_name_to_create} already exists.")
+                    logger.info(
+                        "Database %s already exists.",
+                        db_name_to_create
+                    )
+                except psycopg.Error as e:
+                    # Log all other errors related to PostgreSQL
+                    logger.error(
+                        "PostgreSQL error while creating the database %s: %s",
+                        db_name_to_create, str(e)
+                    )
+                    # Raise the same exception to stop the script
+                    raise
                 except Exception as e:
-                    logger.error(f"Error while creating the database {db_name_to_create}: {str(e)}")
-                finally:
-                    # Commit the changes to the database
-                    conn.commit()
-
+                    # Log any unexpected errors not related to PostgreSQL
+                    logger.error("Unexpected error: %s", str(e))
+                    # Raise the same exception to stop the script
+                    raise
     else:
-        logger.error("Invalid database name")
-        raise ValueError("Invalid database name")
+        logger.error("Invalid database name: %s", db_name_to_create)
+        raise ValueError(f"Invalid database name: {db_name_to_create}")
 
 
 # def create_table(conn, table_name, sql_query):
@@ -108,6 +122,7 @@ def create_database(root_db_name, root_user, root_password, host, port,
 #         logger.error(f"Ошибка при создании таблицы {table_name}: {str(e)}")
 #     finally:
 #         cursor.close()
+
 
 def main():
     # Создаем базу данных, если она не существует
