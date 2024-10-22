@@ -11,6 +11,13 @@ logging.basicConfig(filename="logs/app.log",
                     format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
+# Adding console handler to output logs to the console during tests
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)  # Set the level to capture INFO level logs
+console_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))  # Match the format
+logger.addHandler(console_handler)  # Add the console handler to the logger
+
+
 # Load environment variables
 load_dotenv()
 
