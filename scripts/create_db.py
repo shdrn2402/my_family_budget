@@ -97,39 +97,6 @@ def create_database(root_db_name, root_user, root_password, host, port,
         raise ValueError(f"Invalid database name: {db_name_to_create}")
 
 
-# def create_table(conn, table_name, sql_query):
-#     """
-#     Проверяет наличие таблицы и создает ее, если она не существует.
-
-#     Args:
-#         conn: Соединение с базой данных.
-#         table_name: Имя создаваемой таблицы.
-#         sql_query: SQL-запрос для создания таблицы.
-#     """
-
-#     cursor = conn.cursor()
-
-#     try:
-#         # Проверка существования таблицы
-#         cursor.execute(f"""SELECT EXISTS (SELECT FROM information_schema.tables
-#                        WHERE table_name = '{table_name}');""")
-#         exists = cursor.fetchone()[0]
-
-#         if exists:
-#             logger.info(f"Таблица {table_name} уже существует.")
-#         else:
-#             # Установка схемы по умолчанию
-#             cursor.execute("SET search_path TO budget;")
-
-#             # Создание таблицы
-#             cursor.execute(sql_query)
-#             conn.commit()  # Сохранение изменений в базе данных
-#             logger.info(f"Таблица {table_name} создана успешно.")
-#     except Exception as e:
-#         logger.error(f"Ошибка при создании таблицы {table_name}: {str(e)}")
-#     finally:
-#         cursor.close()
-
 
 def main():
     # Создаем базу данных, если она не существует
@@ -139,38 +106,6 @@ def main():
                     host=HOST,
                     port=PORT,
                     db_name_to_create=DBNAMETOCREATE)
-
-    # Подключаемся к базе данных
-    # conn = psycopg2.connect(
-    #     database=DBNAME,
-    #     user=USER,
-    #     password=PASSWORD,
-    #     host=HOST,
-    #     port=PORT
-    # )
-
-    # # SQL-запросы для создания таблиц
-    # create_users_table = """
-    # CREATE TABLE IF NOT EXISTS users (
-    #     tg_id INTEGER PRIMARY KEY,
-    #     user_name VARCHAR(50) NOT NULL,
-    #     family_id INTEGER NOT NULL,
-    #     language VARCHAR(10) NOT NULL
-    # );
-    # """
-
-    # create_roles_table = """
-    # CREATE TABLE IF NOT EXISTS roles (
-    #     id SERIAL PRIMARY KEY,
-    #     role_name VARCHAR(50) NOT NULL
-    # );
-    # """
-
-    # # Создаем таблицы
-    # create_table(conn, "users", create_users_table)
-    # create_table(conn, "roles", create_roles_table)
-
-    # conn.close()
 
 
 if __name__ == "__main__":

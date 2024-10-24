@@ -4,7 +4,7 @@ import re
 from datetime import datetime, time
 from typing import List, Optional
 
-import psycopg2
+import psycopg
 from telegram import Update
 from telegram.ext import ContextTypes
 
