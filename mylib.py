@@ -310,7 +310,6 @@ class User:
         """
         pass
 
-
     @classmethod
     def validate_additional_user(cls, update: Update,
                                  context: ContextTypes.DEFAULT_TYPE) -> dict:
