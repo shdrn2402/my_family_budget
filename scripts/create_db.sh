@@ -1,7 +1,35 @@
 #!/bin/bash
 
+: <<'DOCSTRING'
+This script automates the setup of a PostgreSQL database, creating tables and roles with specified permissions for a budgeting application.
+
+Dependencies:
+- PostgreSQL must be installed and running.
+- Environment variables are loaded from a .env file located in the same directory.
+
+Workflow:
+1. Creates a database if it does not already exist.
+2. Sets up tables using `IF NOT EXISTS` to avoid overwriting existing data.
+3. Sets up roles with specified permissions, ensuring roles are created only if they do not already exist.
+4. Configures pg_hba.conf to use md5 authentication for local connections.
+5. Restarts PostgreSQL to apply changes.
+
+Environment Variables:
+- ROOT_USER: PostgreSQL root user with privileges to create databases and roles.
+- NEW_DBNAME: Name of the database to be created.
+- MAIN_USER, COMMON_USER, READ_ONLY_USER: Names of database roles with different access levels.
+- MAIN_USER_PASSWORD, COMMON_USER_PASSWORD, READ_ONLY_USER_PASSWORD: Passwords for the respective roles.
+
+Logging:
+- Outputs both to the terminal and to logs/app.log.
+
+Usage:
+Execute this script as a superuser to ensure sufficient permissions for database and role creation.
+
+DOCSTRING
+
 exec > >(tee -a logs/app.log) 2>&1
-set -x
+# set -x
 
 # Load environment variables from .env file
 export $(grep -v '^#' .env | grep -v '^TELEGRAM*' | xargs)
@@ -39,6 +67,10 @@ create_database() {
         else
             sudo -u $root_user psql -c "CREATE DATABASE $new_db_name"
             log_message "INFO" "Database $new_db_name created successfully."
+            
+            log_message "INFO" "Creating schema $new_db_name..."
+            sudo -u $root_user psql -d $new_db_name -c "CREATE SCHEMA $new_db_name"
+            log_message "INFO" "Schema $new_db_name created successfully."
         fi
     else
         log_message "ERROR" "Invalid database name: $new_db_name"
@@ -46,49 +78,80 @@ create_database() {
     fi
 }
 
-# Function to create a new database
+# Function to create tables
 create_table() {
     local root_user=$1
     local new_db_name=$2
     local table_names=("${@:3}")
     local query=""
+    local table_list=""
+
     for table_name in "${table_names[@]}"; do
         local command="${!table_name}"
         query+="$command "
+        table_list+="$table_name, "
     done
-    query="BEGIN; $query COMMIT;"
+
+    # Удаляем последний символ ", " из table_list
+    table_list="${table_list%, }"
+
+    query="SET SEARCH_PATH TO $new_db_name; BEGIN; $query COMMIT;"
     log_message "INFO" "Connecting to database '$new_db_name'..."
     log_message "INFO" "Creating tables..."
     sudo -u $root_user psql -d $new_db_name -c "$query" 2>&1
        
     if [[ $? -eq 0 ]]; then
-        log_message "INFO" "All tables created successfully."
+        log_message "INFO" "Following tables created successfully: $table_list"
     else
         log_message "ERROR" "Error occurred while creating tables."
         exit 1
     fi
 }
 
-# Function to create a new user
-create_linux_user() { 
-    local user_name=$1
-    local password=$2
+# Function to create roles
+create_roles() {
+    local root_user=$1
+    local new_db_name=$2
+    local role_names=("${@:3}")
+    local query=""
+    local role_list=""
 
-    # Create the user with the specified username and set the user's password
-    usradd_err=$(sudo useradd -m -s /bin/bash $user_name 2>&1)
-    usradd_stat=$?
-    if [[ $usradd_stat -eq 0 ]]; then
-        log_message "INFO" "User $user_name created successfully."
-        echo "$user_name:$password" | sudo chpasswd
-        log_message "INFO" "Password for User $user_name created successfully."
+    for role_name in "${role_names[@]}"; do
+        local command="${!role_name}"
+        
+        # Add a check for existing role before creation
+        query+="DO \$\$
+        BEGIN
+            IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${role_name}') THEN
+                $command
+            END IF;
+        END
+        \$\$; "
+        
+        role_list+="$role_name, "
+    done
+
+    # Remove the trailing comma and space from the role list
+    role_list="${role_list%, }"
+
+    log_message "INFO" "Connecting to database '$new_db_name'..."
+    log_message "INFO" "Creating roles..."
+    
+    sudo -u $root_user psql -d $new_db_name -c "$query" 2>&1
+       
+    if [[ $? -eq 0 ]]; then
+        log_message "INFO" "Following roles created successfully (if they did not exist): $role_list"
     else
-        log_message "WARNING" "$usradd_err"
+        log_message "ERROR" "Error occurred while creating roles."
+        exit 1
     fi
 }
 
+
 # Main function
 main() {
-create_table_users="CREATE TABLE users (
+# Define queries to create tables
+users="CREATE TABLE IF NOT EXISTS users (
     id INT NOT NULL PRIMARY KEY,
     family_id INT NOT NULL,
     name VARCHAR(32) NOT NULL,
@@ -99,7 +162,7 @@ create_table_users="CREATE TABLE users (
     is_read_only BOOLEAN
 );"
 
-create_table_spendings="CREATE TABLE spendings (
+spendings="CREATE TABLE IF NOT EXISTS spendings (
     id SERIAL PRIMARY KEY,
     name VARCHAR(250) NOT NULL,
     buyer INT NOT NULL REFERENCES users(id),
@@ -110,30 +173,57 @@ create_table_spendings="CREATE TABLE spendings (
     date TIMESTAMP WITH TIME ZONE NOT NULL
 );"
 
-create_table_sources="CREATE TABLE sources_data (
+sources="CREATE TABLE IF NOT EXISTS sources_data (
     id SERIAL PRIMARY KEY,
     source_info JSONB NOT NULL
 );"
 
-create_table_categories="CREATE TABLE categories_data (
+categories="CREATE TABLE IF NOT EXISTS categories_data (
     id SERIAL PRIMARY KEY,
     category_info JSONB NOT NULL
 );"
 
-create_table_subcategories="CREATE TABLE subcategories_data (
+subcategories="CREATE TABLE IF NOT EXISTS subcategories_data (
     id SERIAL PRIMARY KEY,
     subcategory_info JSONB NOT NULL,
     category_id INT NOT NULL REFERENCES categories_data(id)
 );"
 
-table_names=(create_table_sources create_table_categories create_table_subcategories create_table_users create_table_spendings)
+table_names=(sources categories subcategories users spendings)
+
+# Define queries to create roles
+main_user="CREATE USER $main_user WITH PASSWORD '$main_user_passwd' CREATEROLE;
+GRANT CONNECT ON DATABASE $new_db_name TO $main_user;
+GRANT USAGE ON SCHEMA $new_db_name TO $main_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA $new_db_name TO $main_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA $new_db_name GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO $main_user;"
+
+common_user="CREATE USER $common_user WITH PASSWORD '$common_user_passwd';
+GRANT CONNECT ON DATABASE $new_db_name TO $common_user;
+GRANT USAGE ON SCHEMA $new_db_name TO $common_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA $new_db_name TO $common_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA $new_db_name GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO $common_user;"
+
+read_only_user="CREATE USER $read_only_user WITH PASSWORD '$read_only_user_passwd';
+GRANT CONNECT ON DATABASE $new_db_name TO $read_only_user;
+GRANT USAGE ON SCHEMA $new_db_name TO $read_only_user;
+GRANT SELECT ON ALL TABLES IN SCHEMA $new_db_name TO $read_only_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA $new_db_name GRANT SELECT ON TABLES TO $read_only_user;"
+
+user_names=(main_user common_user read_only_user)
 
 create_database "$root_user" "$new_db_name"
 create_table "$root_user" "$new_db_name" "${table_names[@]}"
-create_linux_user "$main_user" "$main_user_passwd"
-create_linux_user "$common_user" "$common_user_passwd"
-create_linux_user "$read_only_user" "$read_only_user_passwd"
+create_roles "$root_user" "$new_db_name" "${user_names[@]}"
 
+  # Path to the pg_hba.conf file
+  pg_hba_conf="/etc/postgresql/16/main/pg_hba.conf"
+
+  # Change authentication method to md5 for local connections
+  sudo sed -i '/^local[[:space:]]\+all[[:space:]]\+all[[:space:]]\+peer$/s/peer/md5/' "$pg_hba_conf"
+
+  # Restart PostgreSQL server to apply changes
+  sudo systemctl restart postgresql
 }
 
 main

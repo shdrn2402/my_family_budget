@@ -139,7 +139,7 @@ class Spending(Note):
         if not full_name:
             raise ValueError(f'''Наименование траты не может быть пустым!
                              {Spending.frmt_msg}''')
-        
+
         try:
             float(cost)
         except ValueError:
