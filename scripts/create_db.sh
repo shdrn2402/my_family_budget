@@ -32,7 +32,11 @@ exec > >(tee -a logs/app.log) 2>&1
 # set -x
 
 # Load environment variables from .env file
-export $(grep -v '^#' .env | grep -v '^TELEGRAM*' | xargs)
+set -a
+source .env
+set +a
+# export $(grep -v '^#' .env | grep -v '^TELEGRAM*' | xargs)
+
 
 # Variables from the environment
 new_db_name=$NEW_DBNAME
@@ -92,13 +96,13 @@ create_table() {
         table_list+="$table_name, "
     done
 
-    # Удаляем последний символ ", " из table_list
+    # Remove the last character ", " from table_list
     table_list="${table_list%, }"
 
     query="SET SEARCH_PATH TO $new_db_name; BEGIN; $query COMMIT;"
     log_message "INFO" "Connecting to database '$new_db_name'..."
     log_message "INFO" "Creating tables..."
-    sudo -u $root_user psql -d $new_db_name -c "$query" 2>&1
+    sudo -u $root_user psql -v ON_ERROR_STOP=1 -d $new_db_name -c "$query" 2>&1
        
     if [[ $? -eq 0 ]]; then
         log_message "INFO" "Following tables created successfully: $table_list"
@@ -116,9 +120,11 @@ create_roles() {
     local query=""
     local role_list=""
 
-    for role_name in "${role_names[@]}"; do
-        local command="${!role_name}"
-        
+    for role_name_var in "${role_names[@]}"; do
+        local role_name="${!role_name_var}"
+        local query_var="${role_name_var}_query"
+        local command="${!query_var}"
+
         # Add a check for existing role before creation
         query+="DO \$\$
         BEGIN
@@ -137,7 +143,7 @@ create_roles() {
     log_message "INFO" "Connecting to database '$new_db_name'..."
     log_message "INFO" "Creating roles..."
     
-    sudo -u $root_user psql -d $new_db_name -c "$query" 2>&1
+    sudo -u $root_user psql -v ON_ERROR_STOP=1 -d $new_db_name -c "$query" 2>&1
        
     if [[ $? -eq 0 ]]; then
         log_message "INFO" "Following roles created successfully (if they did not exist): $role_list"
@@ -150,61 +156,59 @@ create_roles() {
 
 # Main function
 main() {
-# Define queries to create tables
+# Define SQL queries for table creation
 users="CREATE TABLE IF NOT EXISTS users (
-    id INT NOT NULL PRIMARY KEY,
+    id BIGINT PRIMARY KEY, -- Telegram User ID
     family_id INT NOT NULL,
-    name VARCHAR(32) NOT NULL,
-    language CHAR(2) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    is_verified BOOLEAN,
-    is_main_user BOOLEAN,
-    is_read_only BOOLEAN
+    name VARCHAR(64) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );"
 
-spendings="CREATE TABLE IF NOT EXISTS spendings (
+accounts="CREATE TABLE IF NOT EXISTS accounts (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(250) NOT NULL,
-    buyer INT NOT NULL REFERENCES users(id),
-    price NUMERIC NOT NULL,
-    source INT NOT NULL REFERENCES sources_data(id),
-    category INT NOT NULL REFERENCES categories_data(id),
-    subcategory INT NOT NULL REFERENCES subcategories_data(id),
-    date TIMESTAMP WITH TIME ZONE NOT NULL
+    name VARCHAR(100) NOT NULL, -- e.g., 'Visa 4787', 'Cash'
+    type VARCHAR(20) CHECK (type IN ('bank', 'credit_card', 'cash')),
+    balance NUMERIC(12, 2) DEFAULT 0
 );"
 
-sources="CREATE TABLE IF NOT EXISTS sources_data (
+categories="CREATE TABLE IF NOT EXISTS categories (
     id SERIAL PRIMARY KEY,
-    source_info JSONB NOT NULL
+    name VARCHAR(100) NOT NULL,
+    parent_id INT REFERENCES categories(id) ON DELETE CASCADE -- Allows subcategories
 );"
 
-categories="CREATE TABLE IF NOT EXISTS categories_data (
+transactions="CREATE TABLE IF NOT EXISTS transactions (
     id SERIAL PRIMARY KEY,
-    category_info JSONB NOT NULL
+    user_id BIGINT REFERENCES users(id),
+    account_id INT REFERENCES accounts(id),
+    category_id INT REFERENCES categories(id),
+    amount NUMERIC(12, 2) NOT NULL,
+    description TEXT,
+    date TIMESTAMP WITH TIME ZONE NOT NULL,
+    external_id VARCHAR(255) UNIQUE, -- Hash to prevent duplicates during import
+    source_type VARCHAR(20) CHECK (source_type IN ('manual', 'import_xls'))
 );"
 
-subcategories="CREATE TABLE IF NOT EXISTS subcategories_data (
-    id SERIAL PRIMARY KEY,
-    subcategory_info JSONB NOT NULL,
-    category_id INT NOT NULL REFERENCES categories_data(id)
-);"
-
-table_names=(sources categories subcategories users spendings)
+table_names=(users accounts categories transactions)
 
 # Define queries to create roles
-main_user="CREATE USER $main_user WITH PASSWORD '$main_user_passwd' CREATEROLE;
+main_user_query="CREATE USER $main_user WITH PASSWORD '$main_user_passwd' CREATEROLE;
 GRANT CONNECT ON DATABASE $new_db_name TO $main_user;
 GRANT USAGE ON SCHEMA $new_db_name TO $main_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA $new_db_name TO $main_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA $new_db_name GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO $main_user;"
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA $new_db_name TO $main_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA $new_db_name GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO $main_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA $new_db_name GRANT USAGE, SELECT ON SEQUENCES TO $main_user;"
 
-common_user="CREATE USER $common_user WITH PASSWORD '$common_user_passwd';
+common_user_query="CREATE USER $common_user WITH PASSWORD '$common_user_passwd';
 GRANT CONNECT ON DATABASE $new_db_name TO $common_user;
 GRANT USAGE ON SCHEMA $new_db_name TO $common_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA $new_db_name TO $common_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA $new_db_name GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO $common_user;"
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA $new_db_name TO $common_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA $new_db_name GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO $common_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA $new_db_name GRANT USAGE, SELECT ON SEQUENCES TO $common_user;"
 
-read_only_user="CREATE USER $read_only_user WITH PASSWORD '$read_only_user_passwd';
+read_only_user_query="CREATE USER $read_only_user WITH PASSWORD '$read_only_user_passwd';
 GRANT CONNECT ON DATABASE $new_db_name TO $read_only_user;
 GRANT USAGE ON SCHEMA $new_db_name TO $read_only_user;
 GRANT SELECT ON ALL TABLES IN SCHEMA $new_db_name TO $read_only_user;
@@ -215,6 +219,9 @@ user_names=(main_user common_user read_only_user)
 create_database "$root_user" "$new_db_name"
 create_table "$root_user" "$new_db_name" "${table_names[@]}"
 create_roles "$root_user" "$new_db_name" "${user_names[@]}"
+
+log_message "INFO" "Filling tables with initial data..."
+sudo -u $root_user psql -d $new_db_name -f scripts/seed_data.sql
 
   # Path to the pg_hba.conf file
   pg_hba_conf="/etc/postgresql/16/main/pg_hba.conf"

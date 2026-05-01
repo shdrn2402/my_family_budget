@@ -1,0 +1,27 @@
+# Git Commit Convention for AI Agents
+
+**Target Audience:** All AI Coding Agents and Human Developers working on this repository.
+
+## Core Rules
+1. **Language:** All commit messages MUST be written in **English**. No exceptions.
+2. **Format:** You MUST follow the [Conventional Commits](https://www.conventionalcommits.org/) specification.
+3. **Structure:** `<type>[optional scope]: <description>`
+
+## Allowed Commit Types (Tags)
+*   **`feat:`** – A new feature or functionality (e.g., `feat: add telegram bot start handler`).
+*   **`fix:`** – A bug fix (e.g., `fix: resolve crash on invalid excel import`).
+*   **`chore:`** – Maintenance tasks, project setup, dependency updates. Code changes that do not affect production logic (e.g., `chore: setup project folder structure`).
+*   **`refactor:`** – Code changes that neither fix a bug nor add a feature, but improve code structure (e.g., `refactor: extract db connection to separate module`).
+*   **`docs:`** – Documentation changes only (e.g., `docs: update setup instructions in README`).
+*   **`style:`** – Formatting, missing semi-colons, whitespace, etc. No logic changes.
+*   **`test:`** – Adding or modifying tests.
+
+## Description Guidelines
+*   Write in the **imperative, present tense**: use "add" not "added" or "adds", use "fix" not "fixed".
+*   Do not capitalize the first letter of the description.
+*   Do not place a period (`.`) at the end of the description.
+
+## Examples
+*   `chore: initialize bot directory structure and config files`
+*   `feat(db): implement categories synchronization`
+*   `fix: correct parsing logic for date columns in excel`
