@@ -1,0 +1,21 @@
+# Code and Language Standards for AI Agents
+
+**Target Audience:** All AI Coding Agents and Human Developers.
+
+## 1. Language Rules
+*   **Code Elements:** All variable names, function names, classes, database tables, and columns MUST be in **English**. 
+    *   *Rule:* Absolutely no transliteration (e.g., use `expense` instead of `rashod`, `family` instead of `semya`).
+*   **Comments and Docstrings:** All comments, docstrings, and TODOs in the code MUST be written entirely in **English**.
+*   **Internal Logging:** All `logger.info()`, `logger.error()`, etc., MUST be in **English**. This ensures server logs are standard and searchable.
+*   **User-Facing Text:** Russian (and other languages) is STRICTLY limited to user-facing strings (e.g., UI messages, bot replies, default category names). 
+    *   *Best Practice:* Do not hardcode Russian text directly inside business logic or handlers. Store user-facing text in a dedicated translation layer (e.g., `texts.py` or a `locales` folder) and reference it via keys.
+
+## 2. Python Coding Style & Typing
+*   **Strict Type Hinting:** ALL functions and methods MUST have explicit type hints for both arguments and return values (e.g., `def process_data(user_id: int, payload: dict) -> bool:`). This makes it immediately clear what a function expects and returns without reading its body.
+*   **Collections and Optional:** Use specific types (e.g., `list[str]`, `dict[str, Any]`) and explicitly mark optional variables (`Optional[int]`, `int | None`).
+*   Follow **PEP 8** standards.
+*   Use **snake_case** for variables and functions, **PascalCase** for classes, and **UPPER_SNAKE_CASE** for constants.
+
+## 3. Separation of Concerns
+*   **No Magic Strings:** Avoid using string literals for category types, statuses, etc. Use Enums or Constants.
+*   **Handlers vs. Logic:** Keep Telegram handlers thin. Move heavy logic, database queries, and external API calls to the `services/` or `database/` layers.
