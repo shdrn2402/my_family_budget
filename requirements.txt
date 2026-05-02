@@ -3,3 +3,5 @@ psycopg[binary]
 pandas
 openpyxl
 python-dotenv
+pytest
+pytest-asyncio

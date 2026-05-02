@@ -12,6 +12,9 @@ INSERT INTO categories (id, name, parent_id) VALUES
 (5, 'Home & Bills', NULL)
 ON CONFLICT (id) DO NOTHING;
 
+-- Synchronize the ID sequence for the categories table after explicit ID inserts
+SELECT setval(pg_get_serial_sequence('categories', 'id'), (SELECT MAX(id) FROM categories));
+
 -- 2. Insert subcategories linking to parents[cite: 2]
 -- Kids (Parent: Kids)
 INSERT INTO categories (name, parent_id) VALUES ('Daycare', 1) ON CONFLICT DO NOTHING;
@@ -41,6 +44,3 @@ INSERT INTO categories (name, parent_id) VALUES
 ('Utilities', 5),
 ('Telecoms', 5)
 ON CONFLICT DO NOTHING;
-
--- 3. Synchronize the ID sequence for the categories table[cite: 3]
-SELECT setval(pg_get_serial_sequence('categories', 'id'), (SELECT MAX(id) FROM categories));
