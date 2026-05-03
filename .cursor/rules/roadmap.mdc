@@ -1,0 +1,11 @@
+# Strict Roadmap Adherence
+
+**Target Audience:** All AI Coding Agents
+
+## 1. Follow the Roadmap
+*   **Rule:** Development MUST strictly follow the phases and steps defined in `ROADMAP.md`. Do not jump between phases without explicit reason and user approval.
+*   **Tracking Status:** Every completed task MUST be explicitly marked as done (`[x]`) in the `ROADMAP.md` file. 
+
+## 2. Keeping the Roadmap Actual
+*   **Rule:** If a decision is made to remove, add, or change the priority of a feature (e.g., adding a Regex parser before LLM), the Agent MUST immediately update `ROADMAP.md`. 
+*   The Roadmap must always serve as the unequivocal, up-to-date single source of truth for the project's current state and future plans.

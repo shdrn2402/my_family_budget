@@ -1,7 +1,9 @@
 import logging
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 from bot.config import Config
-from bot.handlers.common import start_handler, echo_handler
+from bot.handlers.common import start_handler
+from bot.handlers.expense import expense_message_handler
+from bot.handlers.history import history_handler
 
 # Configure logging to output to console
 logging.basicConfig(
@@ -23,9 +25,10 @@ def main() -> None:
 
     # Register handlers
     application.add_handler(CommandHandler("start", start_handler))
+    application.add_handler(CommandHandler("history", history_handler))
     
-    # Echo handler for all text messages (for testing)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo_handler))
+    # Handler for quick expense entry
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, expense_message_handler))
 
     # Run the bot
     logger.info("Starting bot polling...")

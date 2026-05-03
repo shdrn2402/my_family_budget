@@ -1,0 +1,17 @@
+# Multilingual Architecture Rules
+
+**Target Audience:** All AI Coding Agents and Human Developers.
+
+## 1. Category Storage (JSONB)
+*   **Database Schema:** The `name` column in the `categories` table MUST be of type `JSONB`.
+*   **Format:** It must store translations as a JSON object, e.g., `{"en": "Food", "ru": "Еда"}`.
+*   **Forbidden:** Do not use separate columns (like `name_en`, `name_ru`) and do not store plain text strings in this column.
+
+## 2. Text Parser and Aliases
+*   **Database-Driven Mappings:** All dictionaries for parsing user input (account synonyms, item names, etc.) MUST be stored EXCLUSIVELY in the database (e.g., in `item_aliases` or `account_aliases` tables).
+*   **Strictly No Hardcoding:** It is STRICTLY FORBIDDEN to hardcode any words, synonyms, or mappings in Python code. The codebase must remain completely language-agnostic.
+*   **ID-Based Logic:** Handlers and parsers must NEVER hardcode category or account names. They must operate strictly on `category_id` and `account_id`.
+
+## 3. Presentation Layer
+*   **Dynamic Translation:** When displaying category names to the user in reports or menus, the bot must extract the value corresponding to the user's Telegram `language_code` from the JSONB object (e.g., `category['name'].get('ru', category['name']['en'])`).
+*   **Static Texts:** All static bot replies (greetings, errors) must be routed through `bot/texts.py`.

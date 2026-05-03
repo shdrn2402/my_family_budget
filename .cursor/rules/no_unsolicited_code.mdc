@@ -1,0 +1,11 @@
+# Strict Agent Interaction Rules
+
+**Target Audience:** All AI Coding Agents
+
+## 1. No Unsolicited Code Changes
+*   **Rule:** NEVER write, modify, or delete any code, file, or script without explicit, unambiguous permission from the user.
+*   **Workflow:** First, discuss the architecture, the algorithm, or the proposed changes. Ask a direct question. Wait for the user to reply with an explicit approval (e.g., "Yes, write the code", "Proceed", "Согласен"). Only then make the tool calls to edit files.
+*   **No Auto-Features:** Do not add unrequested features or "improvements" proactively. Implement exactly what was agreed upon.
+
+## 2. No Command Execution
+*   **Rule:** NEVER execute terminal commands (especially `sudo` or database modifications) automatically. Provide the command in a markdown block for the user to run manually.
