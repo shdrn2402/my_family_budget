@@ -19,3 +19,14 @@
 ## 3. Separation of Concerns
 *   **No Magic Strings:** Avoid using string literals for category types, statuses, etc. Use Enums or Constants.
 *   **Handlers vs. Logic:** Keep Telegram handlers thin. Move heavy logic, database queries, and external API calls to the `services/` or `database/` layers.
+
+## 4. Context & Indexing Limits
+*   **Ignore Directories:** NEVER parse, index, or reference files in `venv/`, `.venv/`, `env/`, `node_modules/`, `.git/`, or `__pycache__`.
+*   **Project Focus:** Only analyze files within `bot/`, `scripts/`, `tests/` and root configuration files (`ROADMAP.md`, `requirements.txt`, etc.).
+*   **Library Code:** Do not suggest modifications to files located in `site-packages`. If a library has a bug, suggest a workaround in the application layer.
+ 
+## 5. Resilience & Error Handling
+*   **Uniform Error Handling:** All handlers MUST rely on the central global error handler (`bot/handlers/errors.py`). Avoid redundant local `try-except` blocks unless specific localized feedback is required (e.g., database unique constraints).
+*   **Fail Softly & Localized:** Every unexpected failure MUST result in a user-facing message retrieved exclusively via `bot/texts.py`.
+*   **Actionable Logs:** Unexpected exceptions MUST be logged with `exc_info=context.error` (or `exc_info=True`) to ensure the full traceback is captured for debugging.
+*   **External API Safety:** Services interacting with external APIs (e.g., Gemini) MUST handle connectivity issues and rate limits (429) by returning explicit, handler-friendly error structures.

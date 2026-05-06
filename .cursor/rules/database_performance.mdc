@@ -1,0 +1,31 @@
+---
+description: Rules for database performance and bulk operations
+globs: bot/database.py, bot/services/*.py
+---
+# Database Performance Standards
+
+To ensure the bot remains fast and efficient, especially when handling batch imports or large datasets, follow these rules:
+
+## 1. Prefer Bulk Operations
+*   **Never** run SQL queries in a loop if they can be combined into a single query.
+*   Use `INSERT ... ON CONFLICT DO NOTHING` or `DO UPDATE` for batch imports.
+*   Use `UPDATE ... FROM` or `WHERE id IN (...)` for mass updates.
+
+## 2. Connection Management
+*   Always use the `conn` parameter in database functions to allow re-using an existing connection within a single transaction or session.
+*   Properly close connections or use context managers (`async with`) to prevent leaks.
+
+## 3. Atomic Updates
+*   When a user categorizes a transaction, implement a "ripple effect":
+    1. Update the specific transaction.
+    2. Add/Update the `item_aliases` table.
+    3. Update all other NULL-category transactions with the same description in **one** query.
+
+## 4. Query Efficiency
+*   Avoid `SELECT *` in performance-critical paths; fetch only required columns.
+*   Use `ILIKE` for fuzzy matching with caution (ensure indexes exist if possible).
+*   For categorization matching, prefer exact matches or standardized description prefixes.
+
+---
+**Rule for AI Agents:**
+When asked to process multiple records, always propose a solution that uses the minimum number of database round-trips.

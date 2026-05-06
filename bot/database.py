@@ -60,9 +60,9 @@ async def register_user(user_id: int, name: str, family_id: int = 1, conn: psyco
         logger.error(f"Database error registering user {user_id}: {e}")
         return False
 
-async def get_recent_transactions(user_id: int, limit: int = 10, conn: psycopg.AsyncConnection | None = None) -> list:
+async def get_recent_transactions(user_id: int, limit: int = 10, offset: int = 0, conn: psycopg.AsyncConnection | None = None) -> list:
     """
-    Fetch recent transactions from the DB for a specific user.
+    Fetch transactions from the DB for a specific user with pagination support.
     """
     try:
         connection = conn or await get_db_connection()
@@ -79,9 +79,9 @@ async def get_recent_transactions(user_id: int, limit: int = 10, conn: psycopg.A
                 LEFT JOIN accounts a ON t.account_id = a.id
                 WHERE t.user_id = %s
                 ORDER BY t.date DESC
-                LIMIT %s;
+                LIMIT %s OFFSET %s;
                 """,
-                (user_id, limit)
+                (user_id, limit, offset)
             )
             result = await cur.fetchall()
             
@@ -92,3 +92,106 @@ async def get_recent_transactions(user_id: int, limit: int = 10, conn: psycopg.A
     except Exception as e:
         logger.error(f"Database error fetching transactions for user {user_id}: {e}")
         return []
+
+async def get_transactions_count(user_id: int, conn: psycopg.AsyncConnection | None = None) -> int:
+    """Return total number of transactions for a user."""
+    try:
+        connection = conn or await get_db_connection()
+        async with connection.cursor() as cur:
+            await cur.execute("SELECT COUNT(*) as count FROM transactions WHERE user_id = %s;", (user_id,))
+            result = await cur.fetchone()
+            
+        if conn is None:
+            await connection.close()
+            
+        return result['count'] if result else 0
+    except Exception as e:
+        logger.error(f"Database error counting transactions for user {user_id}: {e}")
+        return 0
+async def get_account_type(account_id: int, conn: psycopg.AsyncConnection | None = None) -> str | None:
+    """Return the type of the account (e.g., 'card', 'cash')."""
+    try:
+        connection = conn or await get_db_connection()
+        async with connection.cursor() as cur:
+            await cur.execute("SELECT type FROM accounts WHERE id = %s;", (account_id,))
+            result = await cur.fetchone()
+            
+        if conn is None:
+            await connection.close()
+            
+        return result['type'] if result else None
+    except Exception as e:
+        logger.error(f"Database error getting account type for {account_id}: {e}")
+        return None
+
+async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg.AsyncConnection | None = None) -> int:
+    """
+    Save multiple transactions to the database.
+    Skips duplicates based on external_id using ON CONFLICT DO NOTHING.
+    Returns the number of successfully inserted rows.
+    """
+    try:
+        connection = conn or await get_db_connection()
+        inserted_count = 0
+        
+        async with connection.cursor() as cur:
+            for tx in transactions:
+                await cur.execute(
+                    """
+                    INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, external_id, source_type)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (external_id) DO NOTHING;
+                    """,
+                    (
+                        user_id,
+                        tx['account_id'],
+                        tx.get('category_id'), # Might be None
+                        tx['amount'],
+                        tx['description'],
+                        tx['date'],
+                        tx['external_id'],
+                        'import_xls'
+                    )
+                )
+                if cur.rowcount > 0:
+                    inserted_count += 1
+                    
+        await connection.commit()
+        if conn is None:
+            await connection.close()
+            
+        return inserted_count
+    except Exception as e:
+        logger.error(f"Database error in bulk save for user {user_id}: {e}")
+        return 0
+
+async def sync_category_by_alias(description_pattern, category_id, user_id, conn=None):
+    """
+    1. Adds/updates an alias in item_aliases.
+    2. Updates all transactions with matching description and NULL category.
+    """
+    connection = conn if conn else await get_db_connection()
+    try:
+        async with connection.cursor() as cur:
+            # 1. Upsert into item_aliases
+            await cur.execute("""
+                INSERT INTO item_aliases (name, category_id, user_id)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (name, user_id) DO UPDATE SET category_id = EXCLUDED.category_id;
+            """, (description_pattern, category_id, user_id))
+            
+            # 2. Bulk update transactions
+            await cur.execute("""
+                UPDATE transactions
+                SET category_id = %s
+                WHERE user_id = %s 
+                  AND category_id IS NULL
+                  AND description ILIKE %s;
+            """, (category_id, user_id, f"%{description_pattern}%"))
+            
+            updated_count = cur.rowcount
+            await connection.commit()
+            return updated_count
+    finally:
+        if conn is None:
+            await connection.close()

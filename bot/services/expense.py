@@ -88,13 +88,26 @@ async def process_expense_text(text: str, conn: psycopg.AsyncConnection) -> List
     
     if not has_errors and not missing_account:
         return fast_results
-        
-    # 3. Fast parser failed, fallback to LLM
+
+    # 3. Fast parser failed, check if we should even bother calling the LLM
+    words = text.split()
+    if len(words) < 3:
+        # Anything less than 3 words is insufficient for a transaction (item, account, amount).
+        # Even if it's natural language like "Bought coffee", we lack amount and account.
+        logger.info("Skipping LLM for insufficient input (< 3 words): %s", text)
+        return fast_results
+
+    # 4. Fallback to LLM
+    logger.info("Falling back to LLM for: %s", text)
     llm_items = await parse_natural_language(text)
     
     # 4. Resolve IDs for LLM items
     results = []
     for item in llm_items:
+        if 'error' in item:
+            results.append(item)
+            continue
+            
         account_alias = item.get('account_alias', '')
         item_name = item.get('item_name', '')
         amount = item.get('amount', 0.0)

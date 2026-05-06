@@ -69,6 +69,9 @@ async def parse_natural_language(text: str) -> List[Dict[str, Any]]:
             result_json = json.loads(content_text)
             return result_json.get("items", [])
             
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Gemini API Error: {e.response.status_code}")
+        return [{"error": "llm_failed", "details": f"API Error: {e.response.status_code}"}]
     except Exception as e:
         logger.error(f"Error parsing with Gemini API: {e}")
-        return []
+        return [{"error": "llm_failed", "details": str(e)}]

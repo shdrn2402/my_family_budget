@@ -1,0 +1,6 @@
+# Ignore for indexing and context
+venv/
+.venv/
+__pycache__/
+.git/
+*.pyc
