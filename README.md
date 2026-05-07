@@ -37,7 +37,7 @@ cd my_family_budget
 Copy `env.example` to `.env` and fill in your credentials:
 ```env
 TELEGRAM_TOKEN="Your TELEGRAM Bot Token"
-ALLOWED_USER_IDS="123456789"
+ALLOWED_USER_IDS="123456789, 987654321"
 DB_HOST=127.0.0.1
 DB_PORT=5432
 DB_NAME=budget
