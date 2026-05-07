@@ -4,7 +4,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from bot.services.importer import import_excel_file
 from bot.database import save_transactions_bulk
-from bot.handlers.expense import check_access
+from bot.handlers.common import check_access
 from bot.texts import get_text
 
 logger = logging.getLogger(__name__)

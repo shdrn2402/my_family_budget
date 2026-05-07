@@ -195,3 +195,30 @@ async def sync_category_by_alias(description_pattern, category_id, user_id, conn
     finally:
         if conn is None:
             await connection.close()
+
+async def execute_read_only_query(sql: str, params: tuple = None) -> list:
+    """
+    Executes a read-only SELECT query and returns the results.
+    Safety: Explicitly checks for SELECT and prevents mutations.
+    """
+    clean_sql = sql.strip().upper()
+    if not clean_sql.startswith("SELECT"):
+        logger.warning(f"Blocked non-SELECT query: {sql}")
+        return []
+
+    # Basic protection against SQL injection and dangerous commands
+    forbidden = ["UPDATE", "DELETE", "DROP", "TRUNCATE", "ALTER", "INSERT", "GRANT", "REVOKE"]
+    if any(cmd in clean_sql for cmd in forbidden):
+        logger.warning(f"Blocked dangerous query: {sql}")
+        return []
+
+    try:
+        conn = await get_db_connection()
+        async with conn.cursor() as cur:
+            await cur.execute(sql, params)
+            result = await cur.fetchall()
+        await conn.close()
+        return result
+    except Exception as e:
+        logger.error(f"SQL execution error: {e}\nQuery: {sql}")
+        raise e

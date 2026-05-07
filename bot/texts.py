@@ -25,7 +25,11 @@ MESSAGES: dict[str, dict[str, str]] = {
         "history_header": "📊 Last 10 transactions:",
         "transcribing_voice": "🎙 Transcribing audio...",
         "heard_voice": "🗣 <i>«{text}»</i>\n\n",
-        "manual_bank_entry_denied": "⚠️ No need to manually enter card spends — just upload your statement later. Use this for cash entries only."
+        "manual_bank_entry_denied": "⚠️ No need to manually enter card spends — just upload your statement later. Use this for cash entries only.",
+        "analytics_analyzing": "🔍 Analyzing data, please wait...",
+        "analytics_translation_error": "❌ Sorry, I couldn't translate that to a query: {error}",
+        "analytics_unsafe_query": "⚠️ This query looks unsafe. I can only perform simple data lookups.",
+        "analytics_general_error": "❌ An error occurred while processing your request. Please try rephrasing."
     },
     "ru": {
         "access_denied": "Извините, этот бот приватный и работает только для моей семьи.",
@@ -53,7 +57,11 @@ MESSAGES: dict[str, dict[str, str]] = {
         "history_header": "📊 Последние 10 транзакций:",
         "transcribing_voice": "🎙 Распознаю голос...",
         "heard_voice": "🗣 <i>«{text}»</i>\n\n",
-        "manual_bank_entry_denied": "⚠️ Для трат по карте ручной ввод не требуется — просто загрузите выписку. Сейчас вносите только наличные."
+        "manual_bank_entry_denied": "⚠️ Для трат по карте ручной ввод не требуется — просто загрузите выписку. Сейчас вносите только наличные.",
+        "analytics_analyzing": "🔍 Анализирую данные, подождите...",
+        "analytics_translation_error": "❌ Простите, не удалось преобразовать это в запрос: {error}",
+        "analytics_unsafe_query": "⚠️ Этот запрос кажется небезопасным. Я могу только искать данные.",
+        "analytics_general_error": "❌ Произошла ошибка при обработке запроса. Попробуйте перефразировать."
     }
 }
 
