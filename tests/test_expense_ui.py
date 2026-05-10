@@ -1,6 +1,8 @@
+# pyrefly: ignore [missing-import]
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from bot.handlers.expense import expense_message_handler
+# pyrefly: ignore [missing-import]
 from telegram import InlineKeyboardMarkup
 
 @pytest.mark.asyncio
@@ -19,9 +21,13 @@ async def test_expense_handler_sends_inline_keyboard():
     # Mock check_access (allow access)
     with patch("bot.handlers.expense.check_access", new_callable=AsyncMock) as mock_check_access, \
          patch("bot.handlers.expense.get_db_connection") as mock_db, \
+         patch("bot.database.get_user_info", new_callable=AsyncMock) as mock_user_info, \
+         patch("bot.database.get_account_type", new_callable=AsyncMock) as mock_account_type, \
          patch("bot.handlers.expense.process_expense_text", new_callable=AsyncMock) as mock_process:
         
         mock_check_access.return_value = True
+        mock_user_info.return_value = {'id': 123, 'family_id': 1, 'name': 'Test User'}
+        mock_account_type.return_value = 'cash'
         
         # Setup mock db context manager
         mock_conn = AsyncMock()

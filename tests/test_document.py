@@ -28,7 +28,9 @@ async def test_document_handler_success():
     update.effective_user.language_code = "ru"
     
     # Mock message replies
-    update.message.reply_text = AsyncMock()
+    status_msg = MagicMock()
+    status_msg.edit_text = AsyncMock()
+    update.message.reply_text = AsyncMock(return_value=status_msg)
     
     # Context
     context = MagicMock()
@@ -51,11 +53,11 @@ async def test_document_handler_success():
         mock_file.download_to_drive.assert_called_once()
         
         # Verify parsing was called with our hint from caption
-        mock_import.assert_called_once_with("temp_path.xlsx", hint="isracard")
+        mock_import.assert_called_once_with("temp_imports/123_statement.xlsx", hint="isracard")
         
         # Verify save to db
         mock_save.assert_called_once()
         
         # Verify success message
-        args, _ = update.message.reply_text.call_args
-        assert "Успешно" in args[0] or "успешно" in args[0]
+        args, _ = status_msg.edit_text.call_args
+        assert "✅" in args[0] or "успешно" in args[0].lower() or "завершен" in args[0].lower()

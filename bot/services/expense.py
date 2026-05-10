@@ -54,25 +54,31 @@ async def parse_expense_message(text: str, conn: psycopg.AsyncConnection) -> Lis
         
     return results
 
-async def resolve_account(alias: str, conn: psycopg.AsyncConnection) -> Optional[int]:
-    """Find account ID from account_aliases table."""
+async def resolve_account(alias: str, family_id: int, conn: psycopg.AsyncConnection) -> Optional[int]:
+    """Find account ID from account_aliases table for a specific family."""
     async with conn.cursor() as cur:
-        await cur.execute("SELECT account_id FROM account_aliases WHERE name = %s;", (alias.lower(),))
+        await cur.execute(
+            "SELECT account_id FROM account_aliases WHERE name = %s AND family_id = %s;", 
+            (alias.lower(), family_id)
+        )
         row = await cur.fetchone()
         if row:
             return row['account_id']
     return None
 
-async def resolve_category_from_alias(item_name: str, conn: psycopg.AsyncConnection) -> Optional[int]:
-    """Find category ID from item_aliases table."""
+async def resolve_category_from_alias(item_name: str, family_id: int, conn: psycopg.AsyncConnection) -> Optional[int]:
+    """Find category ID from item_aliases table for a specific family."""
     async with conn.cursor() as cur:
-        await cur.execute("SELECT category_id FROM item_aliases WHERE name = %s;", (item_name,))
+        await cur.execute(
+            "SELECT category_id FROM item_aliases WHERE name = %s AND family_id = %s;", 
+            (item_name, family_id)
+        )
         row = await cur.fetchone()
         if row:
             return row['category_id']
     return None
 
-async def process_expense_text(text: str, conn: psycopg.AsyncConnection) -> List[Dict[str, Any]]:
+async def process_expense_text(text: str, family_id: int, conn: psycopg.AsyncConnection) -> List[Dict[str, Any]]:
     """
     Smart router: tries fast regex-based parser first.
     If it encounters any formatting errors, falls back to LLM.
@@ -80,28 +86,20 @@ async def process_expense_text(text: str, conn: psycopg.AsyncConnection) -> List
     # 1. Try fast parser
     fast_results = await parse_expense_message(text, conn)
     
-    # 2. Check for errors in any part of the fast parser results.
-    # We also consider it an error if it looks like a template but the account isn't found.
-    # This catches cases like "кола опечатка 50", routing typos to the smart LLM.
-    has_errors = any('error' in item for item in fast_results)
-    missing_account = any(item.get('account_id') is None for item in fast_results)
-    
-    if not has_errors and not missing_account:
+    # Check if fast parser results are complete (have amounts)
+    # Re-resolving IDs with family context if necessary
+    if not any('error' in item for item in fast_results):
+        for item in fast_results:
+            if not item.get('category_id'):
+                item['category_id'] = await resolve_category_from_alias(item['item_name'], family_id, conn)
+            item['account_id'] = await resolve_account(item['account_alias'], family_id, conn)
         return fast_results
 
-    # 3. Fast parser failed, check if we should even bother calling the LLM
-    words = text.split()
-    if len(words) < 3:
-        # Anything less than 3 words is insufficient for a transaction (item, account, amount).
-        # Even if it's natural language like "Bought coffee", we lack amount and account.
-        logger.info("Skipping LLM for insufficient input (< 3 words): %s", text)
-        return fast_results
-
-    # 4. Fallback to LLM
+    # 2. Fallback to LLM
     logger.info("Falling back to LLM for: %s", text)
     llm_items = await parse_natural_language(text)
     
-    # 4. Resolve IDs for LLM items
+    # Resolve aliases for LLM results
     results = []
     for item in llm_items:
         if 'error' in item:

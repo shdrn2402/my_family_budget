@@ -15,8 +15,11 @@ async def test_expense_handler_allows_cash_entry():
     # Mock dependencies
     with patch("bot.handlers.expense.get_db_connection") as mock_db, \
          patch("bot.handlers.expense.process_expense_text") as mock_process, \
-         patch("bot.database.get_account_type") as mock_get_type, \
+         patch("bot.database.get_user_info", new_callable=AsyncMock) as mock_user_info, \
+         patch("bot.database.get_account_type", new_callable=AsyncMock) as mock_get_type, \
          patch("bot.handlers.expense.check_access", return_value=True):
+         
+        mock_user_info.return_value = {'id': 123, 'family_id': 1, 'name': 'Test'}
          
         mock_conn = MagicMock()
         mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
@@ -64,7 +67,7 @@ async def test_expense_handler_blocks_card_entry():
     # Mock dependencies
     with patch("bot.handlers.expense.get_db_connection") as mock_db, \
          patch("bot.handlers.expense.process_expense_text") as mock_process, \
-         patch("bot.database.get_account_type") as mock_get_type, \
+         patch("bot.database.get_account_type", new_callable=AsyncMock) as mock_get_type, \
          patch("bot.handlers.expense.check_access", return_value=True):
          
         mock_conn = MagicMock()

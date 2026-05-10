@@ -99,7 +99,7 @@ async def translate_question_to_sql(question: str, user_id: int) -> Dict[str, An
     prompt = f"""
     You are a PostgreSQL expert for a family budget app. Translate user questions (RU/EN) into SQL.
     Database Schema:
-    - transactions (id, user_id, account_id, category_id, amount, description, date)
+    - transactions (id, user_id, account_id, category_id, amount, description, comment, date)
     - categories (id, name, parent_id) -- 'name' is JSONB: {{"en": "Food", "ru": "Еда"}}
     - accounts (id, name, type, user_id)
     
@@ -111,8 +111,13 @@ async def translate_question_to_sql(question: str, user_id: int) -> Dict[str, An
        - For Russian: categories.name->>'ru' ILIKE '%название%'
        - For English: categories.name->>'en' ILIKE '%name%'
     5. 'amount' is negative for expenses, positive for income. To get total spending, use ABS(SUM(amount)) where amount < 0.
-    6. Use CURRENT_DATE for relative date queries (e.g., 'this month', 'last week', 'since start of year').
-    7. Return JSON with 'sql', 'explanation', 'is_safe'.
+    6. GROUPING BY CATEGORY:
+       - By default, group results by PARENT category to keep reports clean.
+       - Use `COALESCE(categories.parent_id, categories.id)` to find the top-level category ID.
+       - Join the result back with `categories` table to get the name of the parent category.
+       - Example: GROUP BY COALESCE(c.parent_id, c.id)
+    7. Use CURRENT_DATE for relative date queries (e.g., 'this month', 'last week', 'since start of year').
+    8. Return JSON with 'sql', 'explanation', 'is_safe'.
     """
 
     payload = {

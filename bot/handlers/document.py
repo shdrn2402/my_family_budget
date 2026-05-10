@@ -3,7 +3,7 @@ import os
 from telegram import Update
 from telegram.ext import ContextTypes
 from bot.services.importer import import_excel_file
-from bot.database import save_transactions_bulk
+from bot.database import save_transactions_bulk, get_db_connection
 from bot.handlers.common import check_access
 from bot.texts import get_text
 
@@ -61,8 +61,11 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Save to DB
-        inserted_count = await save_transactions_bulk(user_id, transactions)
+        # Save to DB using the raw transactions (trigger will auto-categorize)
+        async with await get_db_connection() as conn:
+            # Save to DB
+
+            inserted_count = await save_transactions_bulk(user_id, transactions, conn)
         
         # Clean up
         if os.path.exists(file_path):

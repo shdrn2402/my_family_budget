@@ -15,7 +15,7 @@ async def classify_intent(text: str) -> str:
         return "UNKNOWN"
 
     # Returning to 2.5-flash as requested
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={Config.GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={Config.GEMINI_API_KEY}"
     
     prompt = f"""
     Classify the intent of the following user message for a family budget bot.
@@ -33,7 +33,7 @@ async def classify_intent(text: str) -> str:
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
             "temperature": 0.0,
-            "maxOutputTokens": 10
+            "maxOutputTokens": 100
         }
     }
 

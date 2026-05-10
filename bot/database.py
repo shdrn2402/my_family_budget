@@ -38,6 +38,23 @@ async def check_user_exists(user_id: int, conn: psycopg.AsyncConnection | None =
         logger.error(f"Database error checking user {user_id}: {e}")
         return False
 
+async def get_user_info(user_id: int, conn: psycopg.AsyncConnection | None = None) -> dict | None:
+    """Get full user information including family_id."""
+    result = None
+    try:
+        connection = conn or await get_db_connection()
+        async with connection.cursor() as cur:
+            await cur.execute("SELECT id, family_id, name FROM users WHERE id = %s;", (user_id,))
+            result = await cur.fetchone()
+            
+        if conn is None:
+            await connection.close()
+            
+        return result
+    except Exception as e:
+        logger.error(f"Database error getting user info for {user_id}: {e}")
+        return None
+
 async def register_user(user_id: int, name: str, family_id: int = 1, conn: psycopg.AsyncConnection | None = None) -> bool:
     """
     Register a new user in the database.

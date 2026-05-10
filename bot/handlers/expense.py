@@ -26,7 +26,8 @@ async def expense_message_handler(update: Update, context: ContextTypes.DEFAULT_
     # --- ANALYTICS ROUTING (Heuristic) ---
     question_keywords = [
         "сколько", "какой", "покажи", "анализ", "сводка", "отчет", "итог", "расход", "сравни", "сравнение", "график", "диаграмма",
-        "how much", "show", "report", "total", "what", "analyze", "summary", "spending", "compare", "chart", "diagram"
+        "дай", "структура", "структуру", "статистика", "статистику",
+        "how much", "show", "report", "total", "what", "analyze", "summary", "spending", "compare", "chart", "diagram", "give", "structure", "stats"
     ]
     is_question = "?" in text or any(text.lower().startswith(word) for word in question_keywords)
     
@@ -36,13 +37,20 @@ async def expense_message_handler(update: Update, context: ContextTypes.DEFAULT_
 
     # --- EXPENSE PROCESSING ---
     async with await get_db_connection() as conn:
-        parsed_items = await process_expense_text(text, conn)
+        from bot.database import get_user_info
+        user_info = await get_user_info(user_id, conn)
+        family_id = user_info['family_id'] if user_info else 1 # Default to 1
+        
+        parsed_items = await process_expense_text(text, family_id, conn)
         
         if not parsed_items:
             # If nothing was parsed and it didn't look like a question, maybe show a hint
             return
 
         responses = []
+        inserted_ids = []
+        total_amount = 0.0
+
         async with conn.cursor() as cur:
             for item in parsed_items:
                 if 'error' in item:
@@ -58,6 +66,16 @@ async def expense_message_handler(update: Update, context: ContextTypes.DEFAULT_
                     responses.append(f"❌ Account not found for '{item.get('original', text)}'")
                     continue
 
+                # Source restriction check
+                from bot.database import get_account_type
+                account_type = await get_account_type(account_id, conn)
+                if account_type == 'card':
+                    responses.append(
+                        "⚠️ Ручной ввод для банковских карт запрещен. Используйте загрузку выписок." if lang == 'ru'
+                        else "⚠️ Manual entry for bank cards is restricted. Please use bank statements only."
+                    )
+                    continue
+
                 # Save to DB
                 await cur.execute(
                     """
@@ -67,8 +85,26 @@ async def expense_message_handler(update: Update, context: ContextTypes.DEFAULT_
                     """,
                     (user_id, account_id, category_id, -abs(amount), item_name)
                 )
+                res = await cur.fetchone()
+                if res:
+                    inserted_ids.append(str(res['id']))
+                
                 await conn.commit()
                 responses.append(f"✅ {item_name}: {amount} ₪")
+                total_amount += float(amount)
 
         if responses:
-            await update.message.reply_text("\n".join(responses))
+            from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+            
+            reply_text = "\n".join(responses)
+            if len(inserted_ids) > 1 and total_amount > 0:
+                reply_text += f"\n\n<b>Итого:</b> {total_amount:.2f} ₪"
+
+            if inserted_ids:
+                keyboard = [
+                    [InlineKeyboardButton("⚙️ Редактировать записи", callback_data=f"edit_main:{','.join(inserted_ids)}")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text(reply_text, reply_markup=reply_markup, parse_mode='HTML')
+            else:
+                await update.message.reply_text(reply_text, parse_mode='HTML')
