@@ -47,12 +47,16 @@ GEMINI_API_KEY="your_gemini_api_key_here"
 ```
 
 ### 3. Run the Application
+
+Using [uv](https://docs.astral.sh/uv/):
 ```bash
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-python -m bot.main
+# Install dependencies and sync virtual environment
+uv sync
+
+# Run the bot application
+uv run main.py
 ```
+
 
 ## 📈 Roadmap
 

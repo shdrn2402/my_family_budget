@@ -1,9 +1,0 @@
-python-telegram-bot --pre
-psycopg[binary]
-pandas
-openpyxl
-python-dotenv
-pytest
-pytest-asyncio
-xlrd
-matplotlib

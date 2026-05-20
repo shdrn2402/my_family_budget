@@ -4,6 +4,7 @@ backups/
 .vscode/
 .env
 .venv
+.venv/
 data/
 logs/
 env/
