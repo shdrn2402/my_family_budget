@@ -39,12 +39,12 @@ async def check_user_exists(user_id: int, conn: psycopg.AsyncConnection | None =
         return False
 
 async def get_user_info(user_id: int, conn: psycopg.AsyncConnection | None = None) -> dict | None:
-    """Get full user information including family_id."""
+    """Get full user information including family_id and is_admin status."""
     result = None
     try:
         connection = conn or await get_db_connection()
         async with connection.cursor() as cur:
-            await cur.execute("SELECT id, family_id, name FROM users WHERE id = %s;", (user_id,))
+            await cur.execute("SELECT id, family_id, name, is_admin FROM users WHERE id = %s;", (user_id,))
             result = await cur.fetchone()
             
         if conn is None:
@@ -55,7 +55,7 @@ async def get_user_info(user_id: int, conn: psycopg.AsyncConnection | None = Non
         logger.error(f"Database error getting user info for {user_id}: {e}")
         return None
 
-async def register_user(user_id: int, name: str, family_id: int = 1, conn: psycopg.AsyncConnection | None = None) -> bool:
+async def register_user(user_id: int, name: str, family_id: int = 1, is_admin: bool = False, conn: psycopg.AsyncConnection | None = None) -> bool:
     """
     Register a new user in the database.
     Defaults to family_id = 1 for the initial setup.
@@ -64,8 +64,8 @@ async def register_user(user_id: int, name: str, family_id: int = 1, conn: psyco
         connection = conn or await get_db_connection()
         async with connection.cursor() as cur:
             await cur.execute(
-                "INSERT INTO users (id, family_id, name) VALUES (%s, %s, %s) ON CONFLICT (id) DO NOTHING;",
-                (user_id, family_id, name)
+                "INSERT INTO users (id, family_id, name, is_admin) VALUES (%s, %s, %s, %s) ON CONFLICT (id) DO NOTHING;",
+                (user_id, family_id, name, is_admin)
             )
         await connection.commit()
         
@@ -239,3 +239,59 @@ async def execute_read_only_query(sql: str, params: tuple = None) -> list:
     except Exception as e:
         logger.error(f"SQL execution error: {e}\nQuery: {sql}")
         raise e
+
+async def get_user_linked_account(user_id: int, conn: psycopg.AsyncConnection | None = None) -> dict | None:
+    """Get the account currently linked to the user, if any."""
+    try:
+        connection = conn or await get_db_connection()
+        async with connection.cursor() as cur:
+            await cur.execute(
+                "SELECT id, name, type FROM accounts WHERE owner_id = %s LIMIT 1;", 
+                (user_id,)
+            )
+            result = await cur.fetchone()
+        if conn is None:
+            await connection.close()
+        return result
+    except Exception as e:
+        logger.error(f"Error getting linked account for user {user_id}: {e}")
+        return None
+
+async def get_unlinked_accounts(family_id: int, conn: psycopg.AsyncConnection | None = None) -> list[dict]:
+    """Get list of free (unlinked) card accounts for a family."""
+    try:
+        connection = conn or await get_db_connection()
+        async with connection.cursor() as cur:
+            await cur.execute(
+                "SELECT id, name FROM accounts WHERE family_id = %s AND owner_id IS NULL AND type = 'card' ORDER BY id;", 
+                (family_id,)
+            )
+            result = await cur.fetchall()
+        if conn is None:
+            await connection.close()
+        return result
+    except Exception as e:
+        logger.error(f"Error getting unlinked accounts for family {family_id}: {e}")
+        return []
+
+async def link_user_to_account(user_id: int, account_id: int, conn: psycopg.AsyncConnection | None = None) -> bool:
+    """Link user to specified account, with concurrency safety."""
+    try:
+        connection = conn or await get_db_connection()
+        async with connection.cursor() as cur:
+            await cur.execute("SELECT owner_id FROM accounts WHERE id = %s FOR UPDATE;", (account_id,))
+            res = await cur.fetchone()
+            if res and res['owner_id'] is not None:
+                return False # Already claimed
+                
+            await cur.execute(
+                "UPDATE accounts SET owner_id = %s WHERE id = %s;", 
+                (user_id, account_id)
+            )
+        await connection.commit()
+        if conn is None:
+            await connection.close()
+        return True
+    except Exception as e:
+        logger.error(f"Error linking user {user_id} to account {account_id}: {e}")
+        return False

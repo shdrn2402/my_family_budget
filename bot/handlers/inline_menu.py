@@ -26,6 +26,12 @@ async def inline_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='HTML')
             return
 
+        # 1b. Account Binding
+        elif data.startswith("link_acc:"):
+            from bot.handlers.common import link_account_callback_handler
+            await link_account_callback_handler(update, context)
+            return
+
         # 2. Main Edit Menu (List of transactions)
         if data.startswith("edit_main:"):
             parts = data.split(":")
