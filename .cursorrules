@@ -4,3 +4,10 @@ venv/
 __pycache__/
 .git/
 *.pyc
+
+# STRICT PRIVACY & SECURITY RULES FOR AI AGENTS:
+# 1. DO NOT READ, VIEW, OR INDEX: `.env`, `compose.yaml`.
+# 2. DO NOT MODIFY OR EDIT: `.env`, `compose.yaml`.
+# 3. DO NOT search for real credentials, tokens, or passwords in files.
+# 4. Under no circumstances should active configuration files `.env` and `compose.yaml` be read or printed in chat.
+# 5. YOU MAY read, reference, and modify templates: `env.example` and `compose.example.yaml`.

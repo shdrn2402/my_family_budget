@@ -1,20 +1,40 @@
-#Backups
-backups/
-# Environments
-.vscode/
-.env
-.venv
+# === Python ===
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# === Virtual Environments ===
 .venv/
-data/
-logs/
-env/
 venv/
+env/
 ENV/
 env.bak/
 venv.bak/
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
 
-# Temporary scripts
+# === Secrets & Local Config ===
+.env
+compose.yaml
+
+# === uv ===
+# uv.lock is intentionally tracked (reproducible builds)
+
+# === Project: Temporary Files ===
+logs/
+backups/
+temp_imports/
+bot/temp_plots/
+
+# === Project: Working Documents (not for repo) ===
+docs/history/
+
+# === IDE ===
+.vscode/
+.idea/
+
+# === Misc ===
 scratch/
+*.log
