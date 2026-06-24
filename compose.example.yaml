@@ -1,0 +1,44 @@
+services:
+  pgdatabase:
+    image: postgres:18
+    environment:
+      - POSTGRES_DB=your_db_name
+      - POSTGRES_USER=your_user
+      - POSTGRES_PASSWORD=your_password
+    volumes:
+      - "budget_postgres_data:/var/lib/postgresql/data:rw"
+    ports:
+      - "5433:5432"
+    restart: unless-stopped
+  pgadmin:
+    image: dpage/pgadmin4:9.15
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=your_pgadmin_email
+      - PGADMIN_DEFAULT_PASSWORD=your_pgadmin_password
+    volumes:
+      - "pgadmin_data:/var/lib/pgadmin"
+    ports:
+      - "8085:80"
+    depends_on:
+      - pgdatabase
+    restart: unless-stopped
+  budget_bot:
+    image: budget_bot:v2.0
+    environment:
+      - TELEGRAM_TOKEN=your_telegram_token
+      - ALLOWED_USER_IDS=your_user_ids
+      - DB_HOST=pgdatabase
+      - DB_PORT=5432
+      - DB_NAME=your_db_name
+      - DB_USER=your_user
+      - DB_PASSWORD=your_password
+    volumes:
+      - "telegram_data:/logs"
+    depends_on:
+      - pgdatabase
+    restart: unless-stopped
+
+volumes:
+  budget_postgres_data:
+  pgadmin_data:
+  telegram_data:
