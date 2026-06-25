@@ -23,6 +23,45 @@ async def expense_message_handler(update: Update, context: ContextTypes.DEFAULT_
     lang = update.effective_user.language_code
     user_id = update.effective_user.id
 
+    # --- RENAME OR REPRICE TRANSACTION INTERCEPT ---
+    if update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id:
+        original_text = update.message.reply_to_message.text
+        if "напишите новое название" in original_text or "write the new name" in original_text:
+            import re
+            match = re.search(r"\[ID:\s*(\d+)\]", original_text)
+            if match:
+                tx_id = int(match.group(1))
+                new_name = text.strip().lower()
+                
+                async with await get_db_connection() as conn:
+                    async with conn.cursor() as cur:
+                        await cur.execute("UPDATE transactions SET description = %s WHERE id = %s", (new_name, tx_id))
+                    await conn.commit()
+                
+                success_msg = f"✅ Название изменено на '{new_name}'" if lang == 'ru' else f"✅ Name changed to '{new_name}'"
+                await update.message.reply_text(success_msg)
+                return
+        elif "напишите новую сумму" in original_text or "write the new amount" in original_text:
+            import re
+            match = re.search(r"\[ID_SUM:\s*(\d+)\]", original_text)
+            if match:
+                tx_id = int(match.group(1))
+                try:
+                    new_amount = float(text.strip().replace(',', '.'))
+                    db_amount = -abs(new_amount)
+                    
+                    async with await get_db_connection() as conn:
+                        async with conn.cursor() as cur:
+                            await cur.execute("UPDATE transactions SET amount = %s WHERE id = %s", (db_amount, tx_id))
+                        await conn.commit()
+                    
+                    success_msg = f"✅ Сумма изменена на '{new_amount}'" if lang == 'ru' else f"✅ Amount changed to '{new_amount}'"
+                    await update.message.reply_text(success_msg)
+                except ValueError:
+                    error_msg = "❌ Пожалуйста, введите корректное число." if lang == 'ru' else "❌ Please enter a valid number."
+                    await update.message.reply_text(error_msg)
+                return
+
     # --- ANALYTICS ROUTING (Heuristic) ---
     question_keywords = [
         "сколько", "какой", "покажи", "анализ", "сводка", "отчет", "итог", "расход", "сравни", "сравнение", "график", "диаграмма",
@@ -39,9 +78,7 @@ async def expense_message_handler(update: Update, context: ContextTypes.DEFAULT_
     async with await get_db_connection() as conn:
         from bot.database import get_user_info
         user_info = await get_user_info(user_id, conn)
-        family_id = user_info['family_id'] if user_info else 1 # Default to 1
-        
-        parsed_items = await process_expense_text(text, family_id, conn)
+        parsed_items = await process_expense_text(text, conn)
         
         if not parsed_items:
             # If nothing was parsed and it didn't look like a question, maybe show a hint
@@ -76,21 +113,30 @@ async def expense_message_handler(update: Update, context: ContextTypes.DEFAULT_
                     )
                     continue
 
+                comment = item.get('comment')
+                
                 # Save to DB
                 await cur.execute(
                     """
-                    INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, source_type)
-                    VALUES (%s, %s, %s, %s, %s, CURRENT_DATE, 'manual_text')
+                    INSERT INTO transactions (user_id, account_id, category_id, amount, description, comment, date, source_type)
+                    VALUES (%s, %s, %s, %s, %s, %s, CURRENT_DATE, 'manual_text')
                     RETURNING id;
                     """,
-                    (user_id, account_id, category_id, -abs(amount), item_name)
+                    (user_id, account_id, category_id, -abs(amount), item_name, comment)
                 )
                 res = await cur.fetchone()
                 if res:
                     inserted_ids.append(str(res['id']))
                 
                 await conn.commit()
-                responses.append(f"✅ {item_name}: {amount} ₪")
+                
+                comment_text = f" ({comment})" if comment else ""
+                if category_id:
+                    responses.append(f"✅ {item_name}: {amount} ₪{comment_text}")
+                else:
+                    warning_text = " (категория не задана)" if lang == 'ru' else " (category missing)"
+                    responses.append(f"❓ {item_name}: {amount} ₪{comment_text}{warning_text}")
+                
                 total_amount += float(amount)
 
         if responses:
@@ -98,11 +144,12 @@ async def expense_message_handler(update: Update, context: ContextTypes.DEFAULT_
             
             reply_text = "\n".join(responses)
             if len(inserted_ids) > 1 and total_amount > 0:
-                reply_text += f"\n\n<b>Итого:</b> {total_amount:.2f} ₪"
+                total_label = "Итого:" if lang == 'ru' else "Total:"
+                reply_text += f"\n\n<b>{total_label}</b> {total_amount:.2f} ₪"
 
             if inserted_ids:
                 keyboard = [
-                    [InlineKeyboardButton("⚙️ Редактировать записи", callback_data=f"edit_main:{','.join(inserted_ids)}")]
+                    [InlineKeyboardButton(get_text("edit_records_button", lang), callback_data=f"edit_main:{','.join(inserted_ids)}")]
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 await update.message.reply_text(reply_text, reply_markup=reply_markup, parse_mode='HTML')

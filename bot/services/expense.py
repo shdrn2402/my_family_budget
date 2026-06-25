@@ -1,6 +1,7 @@
 import logging
 from typing import List, Dict, Any, Optional
 import psycopg
+from psycopg.rows import dict_row
 from bot.services.llm import parse_natural_language
 
 logger = logging.getLogger(__name__)
@@ -23,19 +24,25 @@ async def parse_expense_message(text: str, conn: psycopg.AsyncConnection) -> Lis
             results.append({'original': part, 'error': 'not_enough_words'})
             continue
             
-        # 1. Parse Amount (last word)
-        try:
-            amount_str: str = words[-1].replace(',', '.')
-            amount: float = float(amount_str)
-        except ValueError:
+        # Find amount from the end to allow optional trailing comments
+        amount_idx = -1
+        amount = 0.0
+        for i in range(len(words)-1, 0, -1): # Need at least 2 words before amount (item_name, account_alias)
+            try:
+                amount_str = words[i].replace(',', '.')
+                amount = float(amount_str)
+                amount_idx = i
+                break
+            except ValueError:
+                continue
+
+        if amount_idx < 2:
             results.append({'original': part, 'error': 'invalid_amount'})
             continue
-            
-        # 2. Parse Account Alias (second to last word)
-        account_alias: str = words[-2].lower()
-        
-        # 3. Parse Item Name (everything before the account alias)
-        item_name: str = " ".join(words[:-2]).lower()
+
+        account_alias: str = words[amount_idx - 1].lower()
+        item_name: str = " ".join(words[:amount_idx - 1]).lower()
+        comment: Optional[str] = " ".join(words[amount_idx + 1:]) if amount_idx < len(words) - 1 else None
         
         # 4. Resolve Account ID
         account_id: Optional[int] = await resolve_account(account_alias, conn)
@@ -49,36 +56,37 @@ async def parse_expense_message(text: str, conn: psycopg.AsyncConnection) -> Lis
             'amount': amount,
             'account_id': account_id,
             'account_alias': account_alias,
-            'category_id': category_id
+            'category_id': category_id,
+            'comment': comment
         })
         
     return results
 
-async def resolve_account(alias: str, family_id: int, conn: psycopg.AsyncConnection) -> Optional[int]:
-    """Find account ID from account_aliases table for a specific family."""
-    async with conn.cursor() as cur:
+async def resolve_account(alias: str, conn: psycopg.AsyncConnection) -> Optional[int]:
+    """Find account ID from account_aliases table."""
+    async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
-            "SELECT account_id FROM account_aliases WHERE name = %s AND family_id = %s;", 
-            (alias.lower(), family_id)
+            "SELECT account_id FROM account_aliases WHERE name = %s;", 
+            (alias.lower(),)
         )
         row = await cur.fetchone()
         if row:
             return row['account_id']
     return None
 
-async def resolve_category_from_alias(item_name: str, family_id: int, conn: psycopg.AsyncConnection) -> Optional[int]:
-    """Find category ID from item_aliases table for a specific family."""
-    async with conn.cursor() as cur:
+async def resolve_category_from_alias(item_name: str, conn: psycopg.AsyncConnection) -> Optional[int]:
+    """Find category ID from item_aliases table."""
+    async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
-            "SELECT category_id FROM item_aliases WHERE name = %s AND family_id = %s;", 
-            (item_name, family_id)
+            "SELECT category_id FROM item_aliases WHERE name = %s;", 
+            (item_name.lower().strip(),)
         )
         row = await cur.fetchone()
         if row:
             return row['category_id']
     return None
 
-async def process_expense_text(text: str, family_id: int, conn: psycopg.AsyncConnection) -> List[Dict[str, Any]]:
+async def process_expense_text(text: str, conn: psycopg.AsyncConnection) -> List[Dict[str, Any]]:
     """
     Smart router: tries fast regex-based parser first.
     If it encounters any formatting errors, falls back to LLM.
@@ -91,8 +99,8 @@ async def process_expense_text(text: str, family_id: int, conn: psycopg.AsyncCon
     if not any('error' in item for item in fast_results):
         for item in fast_results:
             if not item.get('category_id'):
-                item['category_id'] = await resolve_category_from_alias(item['item_name'], family_id, conn)
-            item['account_id'] = await resolve_account(item['account_alias'], family_id, conn)
+                item['category_id'] = await resolve_category_from_alias(item['item_name'], conn)
+            item['account_id'] = await resolve_account(item['account_alias'], conn)
         return fast_results
 
     # 2. Fallback to LLM
@@ -106,9 +114,10 @@ async def process_expense_text(text: str, family_id: int, conn: psycopg.AsyncCon
             results.append(item)
             continue
             
-        account_alias = item.get('account_alias', '')
-        item_name = item.get('item_name', '')
+        account_alias = item.get('account_alias', '').strip().lower()
+        item_name = item.get('item_name', '').strip().lower()
         amount = item.get('amount', 0.0)
+        comment = item.get('comment', None)
         
         account_id = await resolve_account(account_alias, conn) if account_alias else None
         category_id = await resolve_category_from_alias(item_name, conn)
@@ -119,7 +128,8 @@ async def process_expense_text(text: str, family_id: int, conn: psycopg.AsyncCon
             'amount': amount,
             'account_id': account_id,
             'account_alias': account_alias,
-            'category_id': category_id
+            'category_id': category_id,
+            'comment': comment
         })
         
     return results
