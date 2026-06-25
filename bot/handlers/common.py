@@ -71,12 +71,11 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     # 2. Retrieve user's family info
-    user_info = await get_user_info(user_id)
-    family_id = user_info['family_id'] if user_info else 1
+    user_id = update.effective_user.id
     telegram_name = update.effective_user.first_name or ""
 
     # Get free accounts
-    free_accounts = await get_unlinked_accounts(family_id)
+    free_accounts = await get_unlinked_accounts()
 
     # 3. Attempt auto-recognition (case-insensitive first name check)
     matched_account = None

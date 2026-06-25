@@ -1,39 +1,6 @@
-#!/bin/bash
-
-set -e # Exit immediately if a command exits with a non-zero status
-
-# Load environment variables
-if [ -f .env ]; then
-    source .env
-else
-    echo "Error: .env file not found! Please copy env.example to .env and fill it."
-    exit 1
-fi
-
-echo "Cleaning up old database and user if they exist..."
-# Drop old DB and user if we are doing a fresh start
-sudo -u postgres psql -v ON_ERROR_STOP=0 <<EOF
-DROP DATABASE IF EXISTS ${DB_NAME};
-DROP USER IF EXISTS ${DB_USER};
-EOF
-
-echo "Creating database schema and tables..."
-
-sudo -u postgres psql -v ON_ERROR_STOP=1 <<EOF
--- 1. Create the application user
-CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';
-
--- 2. Create the database
-CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};
-
--- 3. Connect to the new database
-\c ${DB_NAME}
-
--- 4. Create Schema
-CREATE SCHEMA IF NOT EXISTS budget AUTHORIZATION ${DB_USER};
+CREATE SCHEMA IF NOT EXISTS budget;
 SET search_path TO budget;
 
--- 5. Create Tables
 CREATE TABLE IF NOT EXISTS users (
     id BIGINT PRIMARY KEY, -- Telegram ID
     name VARCHAR(255),
@@ -79,13 +46,3 @@ CREATE TABLE IF NOT EXISTS transactions (
     source_type VARCHAR(20) CHECK (source_type IN ('manual', 'import_xls', 'manual_text')),
     status VARCHAR(20) DEFAULT 'confirmed' CHECK (status IN ('draft', 'pending', 'confirmed', 'adjustment'))
 );
-
--- 6. Grant Privileges
-GRANT ALL PRIVILEGES ON SCHEMA budget TO ${DB_USER};
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA budget TO ${DB_USER};
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA budget TO ${DB_USER};
-ALTER DEFAULT PRIVILEGES IN SCHEMA budget GRANT ALL ON TABLES TO ${DB_USER};
-ALTER DEFAULT PRIVILEGES IN SCHEMA budget GRANT ALL ON SEQUENCES TO ${DB_USER};
-EOF
-
-echo "✅ Database initialized successfully!"

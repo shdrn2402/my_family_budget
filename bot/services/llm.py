@@ -174,3 +174,48 @@ async def generate_answer_from_data(question: str, data_rows: List[Dict], error:
     except Exception as e:
         logger.error(f"Answer Generation Error: {e}")
         return f"Результаты / Results: {data_rows}"
+
+async def translate_item_name(text: str) -> str | None:
+    """
+    Translates or transliterates a purchase item name to its alternative language (Russian ⇄ English) using Gemini.
+    Returns the translation in lowercase, or None if translation failed or is not applicable.
+    """
+    if not Config.GEMINI_API_KEY:
+        return None
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={Config.GEMINI_API_KEY}"
+    
+    prompt = f"""
+    Translate this purchase item name: '{text}'.
+    If it is written in Cyrillic (Russian), you MUST return an English translation or transliteration.
+    If it is written in Latin (English), you MUST return a Russian translation or transliteration.
+    Do NOT return the exact same word. Example: 'кола' -> 'cola', 'sprite' -> 'спрайт'.
+    Return ONLY the translated word in lowercase. No quotes, no punctuation.
+    """
+    
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=payload, timeout=5.0)
+            if response.status_code != 200:
+                logger.error(f"Gemini translation error: {response.status_code} - {response.text}")
+                return None
+            
+            data = response.json()
+            translation = data["candidates"][0]["content"]["parts"][0]["text"].strip().lower()
+            
+            # Clean up potential quotes
+            translation = translation.replace('"', '').replace("'", "")
+            
+            if translation == text.strip().lower() or not translation:
+                return None
+                
+            return translation
+    except Exception as e:
+        logger.error(f"Failed to translate item name '{text}': {e}")
+        return None

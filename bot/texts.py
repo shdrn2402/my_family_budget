@@ -29,7 +29,9 @@ MESSAGES: dict[str, dict[str, str]] = {
         "analytics_analyzing": "🔍 Analyzing data, please wait...",
         "analytics_translation_error": "❌ Sorry, I couldn't translate that to a query: {error}",
         "analytics_unsafe_query": "⚠️ This query looks unsafe. I can only perform simple data lookups.",
-        "analytics_general_error": "❌ An error occurred while processing your request. Please try rephrasing."
+        "analytics_general_error": "❌ An error occurred while processing your request. Please try rephrasing.",
+        "category_saved": "✅ Category successfully saved!",
+        "alias_added": "🤖 Added English alias: {translated}"
     },
     "ru": {
         "access_denied": "Извините, этот бот приватный и работает только для моей семьи.",
@@ -61,7 +63,9 @@ MESSAGES: dict[str, dict[str, str]] = {
         "analytics_analyzing": "🔍 Анализирую данные, подождите...",
         "analytics_translation_error": "❌ Простите, не удалось преобразовать это в запрос: {error}",
         "analytics_unsafe_query": "⚠️ Этот запрос кажется небезопасным. Я могу только искать данные.",
-        "analytics_general_error": "❌ Произошла ошибка при обработке запроса. Попробуйте перефразировать."
+        "analytics_general_error": "❌ Произошла ошибка при обработке запроса. Попробуйте перефразировать.",
+        "category_saved": "✅ Категория успешно сохранена!",
+        "alias_added": "🤖 Добавлен английский алиас: {translated}"
     }
 }
 

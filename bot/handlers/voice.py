@@ -54,9 +54,7 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         async with await get_db_connection() as conn:
             from bot.database import get_user_info
             user_info = await get_user_info(user_id, conn)
-            family_id = user_info['family_id'] if user_info else 1
-            
-            parsed_items = await process_expense_text(text, family_id, conn)
+            parsed_items = await process_expense_text(text, conn)
             
             if not parsed_items:
                 await processing_msg.edit_text(heard_text + get_text("parse_error", lang), parse_mode='HTML')

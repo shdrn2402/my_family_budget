@@ -1,6 +1,7 @@
 import logging
 import psycopg
 from psycopg.rows import dict_row
+import asyncio
 from bot.config import Config
 
 logger = logging.getLogger(__name__)
@@ -39,12 +40,11 @@ async def check_user_exists(user_id: int, conn: psycopg.AsyncConnection | None =
         return False
 
 async def get_user_info(user_id: int, conn: psycopg.AsyncConnection | None = None) -> dict | None:
-    """Get full user information including family_id and is_admin status."""
-    result = None
+    """Get full user information including is_admin status."""
     try:
         connection = conn or await get_db_connection()
         async with connection.cursor() as cur:
-            await cur.execute("SELECT id, family_id, name, is_admin FROM users WHERE id = %s;", (user_id,))
+            await cur.execute("SELECT id, name, is_admin FROM users WHERE id = %s;", (user_id,))
             result = await cur.fetchone()
             
         if conn is None:
@@ -55,17 +55,16 @@ async def get_user_info(user_id: int, conn: psycopg.AsyncConnection | None = Non
         logger.error(f"Database error getting user info for {user_id}: {e}")
         return None
 
-async def register_user(user_id: int, name: str, family_id: int = 1, is_admin: bool = False, conn: psycopg.AsyncConnection | None = None) -> bool:
+async def register_user(user_id: int, name: str, is_admin: bool = False, conn: psycopg.AsyncConnection | None = None) -> bool:
     """
     Register a new user in the database.
-    Defaults to family_id = 1 for the initial setup.
     """
     try:
         connection = conn or await get_db_connection()
         async with connection.cursor() as cur:
             await cur.execute(
-                "INSERT INTO users (id, family_id, name, is_admin) VALUES (%s, %s, %s, %s) ON CONFLICT (id) DO NOTHING;",
-                (user_id, family_id, name, is_admin)
+                "INSERT INTO users (id, name, is_admin) VALUES (%s, %s, %s) ON CONFLICT (id) DO NOTHING;",
+                (user_id, name, is_admin)
             )
         await connection.commit()
         
@@ -192,10 +191,10 @@ async def sync_category_by_alias(description_pattern, category_id, user_id, conn
         async with connection.cursor() as cur:
             # 1. Upsert into item_aliases
             await cur.execute("""
-                INSERT INTO item_aliases (name, category_id, user_id)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (name, user_id) DO UPDATE SET category_id = EXCLUDED.category_id;
-            """, (description_pattern, category_id, user_id))
+                INSERT INTO item_aliases (name, category_id)
+                VALUES (%s, %s)
+                ON CONFLICT (name) DO UPDATE SET category_id = EXCLUDED.category_id;
+            """, (description_pattern.lower().strip(), category_id))
             
             # 2. Bulk update transactions
             await cur.execute("""
@@ -257,21 +256,20 @@ async def get_user_linked_account(user_id: int, conn: psycopg.AsyncConnection | 
         logger.error(f"Error getting linked account for user {user_id}: {e}")
         return None
 
-async def get_unlinked_accounts(family_id: int, conn: psycopg.AsyncConnection | None = None) -> list[dict]:
-    """Get list of free (unlinked) card accounts for a family."""
+async def get_unlinked_accounts(conn: psycopg.AsyncConnection | None = None) -> list[dict]:
+    """Get accounts that haven't been linked to a user yet."""
     try:
         connection = conn or await get_db_connection()
         async with connection.cursor() as cur:
             await cur.execute(
-                "SELECT id, name FROM accounts WHERE family_id = %s AND owner_id IS NULL AND type = 'card' ORDER BY id;", 
-                (family_id,)
+                "SELECT id, name FROM accounts WHERE owner_id IS NULL AND type = 'card' ORDER BY id;"
             )
             result = await cur.fetchall()
         if conn is None:
             await connection.close()
         return result
     except Exception as e:
-        logger.error(f"Error getting unlinked accounts for family {family_id}: {e}")
+        logger.error(f"Error getting unlinked accounts: {e}")
         return []
 
 async def link_user_to_account(user_id: int, account_id: int, conn: psycopg.AsyncConnection | None = None) -> bool:
@@ -295,3 +293,57 @@ async def link_user_to_account(user_id: int, account_id: int, conn: psycopg.Asyn
     except Exception as e:
         logger.error(f"Error linking user {user_id} to account {account_id}: {e}")
         return False
+
+async def init_db() -> None:
+    """
+    Initialize the database structure and seed data if it's empty.
+    Includes a retry loop to wait for Postgres to become ready.
+    """
+    max_retries = 10
+    retry_delay = 2
+    conn = None
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            conn = await get_db_connection()
+            break
+        except Exception as e:
+            logger.info(f"Waiting for database... (attempt {attempt}/{max_retries})")
+            await asyncio.sleep(retry_delay)
+
+    if not conn:
+        logger.error("Failed to connect to the database after multiple retries.")
+        return
+
+    try:
+        async with conn.cursor() as cur:
+            # Check if users table exists in schema budget
+            await cur.execute(
+                "SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'budget' AND tablename = 'users');"
+            )
+            res = await cur.fetchone()
+            users_exists = res['exists'] if res else False
+
+            if not users_exists:
+                logger.info("Database is empty. Running schema initialization...")
+                # Execute schema
+                with open("scripts/schema.sql", "r") as f:
+                    await cur.execute(f.read())
+                
+                # Execute seed data
+                try:
+                    with open("scripts/seed_data.sql", "r") as f:
+                        await cur.execute(f.read())
+                    logger.info("Database seeded successfully.")
+                except FileNotFoundError:
+                    logger.warning("scripts/seed_data.sql not found, skipping seed.")
+                    
+                await conn.commit()
+                logger.info("Database initialization complete.")
+            else:
+                logger.info("Database already initialized, skipping.")
+    except Exception as e:
+        logger.error(f"Error during database initialization: {e}")
+    finally:
+        await conn.close()
+

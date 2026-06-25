@@ -1,0 +1,29 @@
+# Git
+.git
+.gitignore
+
+# Python virtual environment & cache
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Tests and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local configuration and logs
+.env
+*.log
+logs/
+
+# IDE & Tool files
+.idea/
+.vscode/
+.cursor/
+.antigravityignore
+
+# Temporary / Legacy scripts
+scripts/deprecated/

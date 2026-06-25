@@ -65,26 +65,17 @@ ON CONFLICT (id) DO UPDATE SET
 -- Reset sequence
 SELECT setval('budget.categories_id_seq', (SELECT max(id) FROM budget.categories));
 
--- Seed default family
-INSERT INTO budget.families (id, name) VALUES
-(1, 'Family')
-ON CONFLICT (id) DO NOTHING;
-
--- Reset sequence for families
-SELECT setval('budget.families_id_seq', (SELECT max(id) FROM budget.families));
-
 -- Seed default accounts
-INSERT INTO budget.accounts (id, family_id, name, type, owner_id) VALUES
-(1, 1, '{"en": "Andrey", "ru": "Андрей"}', 'card', NULL),
-(2, 1, '{"en": "Katya", "ru": "Катя"}', 'card', NULL),
-(3, 1, '{"en": "Family", "ru": "Семья"}', 'card', NULL),
-(4, 1, '{"en": "Shared Cash", "ru": "Общий сейф"}', 'cash', NULL),
-(5, 1, '{"en": "Transit (Bit/Paybox)", "ru": "Транзит (Bit/Paybox)"}', 'transit', NULL)
+INSERT INTO budget.accounts (id, name, type, owner_id) VALUES
+(1, '{"en": "Andrey", "ru": "Андрей"}', 'card', NULL),
+(2, '{"en": "Katya", "ru": "Катя"}', 'card', NULL),
+(3, '{"en": "Family", "ru": "Семья"}', 'card', NULL),
+(4, '{"en": "Shared Cash", "ru": "Общий сейф"}', 'cash', NULL),
+(5, '{"en": "Transit (Bit/Paybox)", "ru": "Транзит (Bit/Paybox)"}', 'transit', NULL)
 ON CONFLICT (id) DO UPDATE SET 
     name = EXCLUDED.name,
     type = EXCLUDED.type,
-    owner_id = EXCLUDED.owner_id,
-    family_id = EXCLUDED.family_id;
+    owner_id = EXCLUDED.owner_id;
 
 -- Reset sequence for accounts
 SELECT setval('budget.accounts_id_seq', (SELECT max(id) FROM budget.accounts));
@@ -94,6 +85,10 @@ INSERT INTO budget.account_aliases (name, account_id) VALUES
 ('4787', 1),
 ('6747', 2),
 ('5883', 3),
-('fibisave', 3)
+('fibisave', 3),
+('нал', 4),
+('наличные', 4),
+('кэш', 4),
+('cash', 4)
 ON CONFLICT (name) DO UPDATE SET
     account_id = EXCLUDED.account_id;

@@ -79,8 +79,14 @@ async def inline_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         elif data.startswith("edit_tx:"):
             _, tx_id, tx_ids_str, page = data.split(":")
             
+            lang = user_lang or "ru"
+            rename_text = "✏️ Изменить название" if lang == 'ru' else "✏️ Edit name"
+            reprice_text = "💰 Изменить сумму" if lang == 'ru' else "💰 Edit amount"
+            
             keyboard = [
                 [InlineKeyboardButton(get_text("change_category", user_lang), callback_data=f"set_cat:{tx_id}:{tx_ids_str}:{page}")],
+                [InlineKeyboardButton(rename_text, callback_data=f"rename_tx:{tx_id}:{tx_ids_str}:{page}")],
+                [InlineKeyboardButton(reprice_text, callback_data=f"reprice_tx:{tx_id}:{tx_ids_str}:{page}")],
                 [InlineKeyboardButton(get_text("delete", user_lang), callback_data=f"delete_tx:{tx_id}:{tx_ids_str}:{page}")],
                 [InlineKeyboardButton("⬅️ " + get_text("cancel", user_lang), callback_data=f"edit_main:{tx_ids_str}:{page}")]
             ]
@@ -116,13 +122,52 @@ async def inline_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                 else:
                     await query.edit_message_reply_markup(reply_markup=None)
             
+        elif data.startswith("rename_tx:"):
+            _, tx_id, tx_ids_str, page = data.split(":")
+            lang = user_lang or "ru"
+            prompt_text = (
+                f"Пожалуйста, напишите новое название в ответ на это сообщение.\n[ID: {tx_id}]"
+                if lang == 'ru' else
+                f"Please write the new name as a reply to this message.\n[ID: {tx_id}]"
+            )
+            from telegram import ForceReply
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=prompt_text,
+                reply_markup=ForceReply(selective=True)
+            )
+            await query.answer()
+
+        elif data.startswith("reprice_tx:"):
+            _, tx_id, tx_ids_str, page = data.split(":")
+            lang = user_lang or "ru"
+            prompt_text = (
+                f"Пожалуйста, напишите новую сумму в ответ на это сообщение.\n[ID_SUM: {tx_id}]"
+                if lang == 'ru' else
+                f"Please write the new amount as a reply to this message.\n[ID_SUM: {tx_id}]"
+            )
+            from telegram import ForceReply
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=prompt_text,
+                reply_markup=ForceReply(selective=True)
+            )
+            await query.answer()
+            
         elif data.startswith("set_cat:"):
             _, tx_id, tx_ids_str, page = data.split(":")
             lang = user_lang or "ru"
             
             async with await get_db_connection() as conn:
                 async with conn.cursor(row_factory=dict_row) as cur:
-                    await cur.execute("SELECT id, name FROM categories ORDER BY id")
+                    await cur.execute("""
+                        SELECT id, name FROM categories c
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM categories sub
+                            WHERE sub.parent_id = c.id
+                        )
+                        ORDER BY id;
+                    """)
                     categories = await cur.fetchall()
             
             keyboard = []
@@ -141,19 +186,53 @@ async def inline_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             
         elif data.startswith("save_cat:"):
             _, tx_id, cat_id, tx_ids_str, page = data.split(":")
+            lang = user_lang or "ru"
             async with await get_db_connection() as conn:
                 async with conn.cursor(row_factory=dict_row) as cur:
                     await cur.execute("UPDATE transactions SET category_id = %s WHERE id = %s", (cat_id, tx_id))
                     await cur.execute("SELECT description FROM transactions WHERE id = %s", (tx_id,))
                     row = await cur.fetchone()
                     if row:
+                        original_name = row['description'].lower().strip()
                         await cur.execute(
                             "INSERT INTO item_aliases (name, category_id) VALUES (%s, %s) ON CONFLICT (name) DO UPDATE SET category_id = EXCLUDED.category_id",
-                            (row['description'], cat_id)
+                            (original_name, cat_id)
                         )
+                        
+                        # Background task for translation to avoid blocking the UI
+                        import asyncio
+                        
+                        async def background_translate(item_name, c_id, chat_id, user_language):
+                            try:
+                                from bot.services.llm import translate_item_name
+                                translated = await translate_item_name(item_name)
+                                if translated:
+                                    logger.info(f"Auto-translated alias '{item_name}' -> '{translated}'")
+                                    async with await get_db_connection() as bg_conn:
+                                        async with bg_conn.cursor() as bg_cur:
+                                            await bg_cur.execute(
+                                                "INSERT INTO item_aliases (name, category_id) VALUES (%s, %s) ON CONFLICT (name) DO UPDATE SET category_id = EXCLUDED.category_id",
+                                                (translated, c_id)
+                                            )
+                                        await bg_conn.commit()
+                                    
+                                    success_text = get_text("alias_added", user_language, translated=translated)
+                                    await context.bot.send_message(chat_id=chat_id, text=success_text)
+                                else:
+                                    logger.warning(f"Translation returned None for '{item_name}'")
+                                    err_text = "⚠️ Gemini решил не переводить это слово (или вернул его же)." if user_language == 'ru' else "⚠️ Gemini decided not to translate this word."
+                                    await context.bot.send_message(chat_id=chat_id, text=err_text)
+                            except Exception as translation_err:
+                                logger.error(f"Failed to auto-translate or insert category alias: {translation_err}")
+                                err_text = "⚠️ Ошибка API при переводе (Gemini сейчас перегружен)." if user_language == 'ru' else "⚠️ API Error during translation (Gemini overloaded)."
+                                await context.bot.send_message(chat_id=chat_id, text=err_text)
+
+                        asyncio.create_task(background_translate(original_name, cat_id, update.effective_chat.id, lang))
                 await conn.commit()
             
-            await query.answer(get_text("category_updated", user_lang), show_alert=True)
+            confirm_text = get_text("category_saved", lang)
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=confirm_text)
+            
             # Go back to transaction actions
             keyboard = [[InlineKeyboardButton("⬅️ " + get_text("close_menu", user_lang), callback_data=f"edit_tx:{tx_id}:{tx_ids_str}:{page}")]]
             await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))

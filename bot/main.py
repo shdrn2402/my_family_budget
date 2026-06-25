@@ -1,6 +1,8 @@
 import logging
+import asyncio
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 from bot.config import Config
+from bot.database import init_db
 from bot.handlers.common import start_handler
 from bot.handlers.expense import expense_message_handler
 from bot.handlers.history import history_handler
@@ -21,6 +23,10 @@ def main() -> None:
 
     if not Config.ALLOWED_USER_IDS:
         logger.warning("ALLOWED_USER_IDS is empty! No one will be able to use the bot.")
+
+    # Initialize the database
+    logger.info("Checking database initialization...")
+    asyncio.run(init_db())
 
     # Initialize the application
     application = ApplicationBuilder().token(Config.TELEGRAM_TOKEN).build()
