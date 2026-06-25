@@ -26,7 +26,7 @@ async def test_expense_handler_sends_inline_keyboard():
          patch("bot.handlers.expense.process_expense_text", new_callable=AsyncMock) as mock_process:
         
         mock_check_access.return_value = True
-        mock_user_info.return_value = {'id': 123, 'family_id': 1, 'name': 'Test User'}
+        mock_user_info.return_value = {'id': 123, 'name': 'Test User'}
         mock_account_type.return_value = 'cash'
         
         # Setup mock db context manager

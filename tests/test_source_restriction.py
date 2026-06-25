@@ -19,7 +19,7 @@ async def test_expense_handler_allows_cash_entry():
          patch("bot.database.get_account_type", new_callable=AsyncMock) as mock_get_type, \
          patch("bot.handlers.expense.check_access", return_value=True):
          
-        mock_user_info.return_value = {'id': 123, 'family_id': 1, 'name': 'Test'}
+        mock_user_info.return_value = {'id': 123, 'name': 'Test'}
          
         mock_conn = MagicMock()
         mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)

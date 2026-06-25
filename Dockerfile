@@ -24,7 +24,6 @@ RUN mkdir /logs
 # Copy application files
 COPY bot/ ./bot/
 COPY scripts/ ./scripts/
-COPY tests/ ./tests/
 COPY main.py ./main.py
 
 # Set entry point
