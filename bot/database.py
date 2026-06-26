@@ -152,25 +152,53 @@ async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg
         
         async with connection.cursor() as cur:
             for tx in transactions:
+                # Try to find a matching pending manual transaction
                 await cur.execute(
                     """
-                    INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, external_id, source_type)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (external_id) DO NOTHING;
+                    SELECT id FROM transactions 
+                    WHERE account_id = %s 
+                      AND amount = %s 
+                      AND status = 'pending' 
+                      AND date BETWEEN %s::date - INTERVAL '2 days' AND %s::date + INTERVAL '2 days'
+                    LIMIT 1
+                    FOR UPDATE SKIP LOCKED;
                     """,
-                    (
-                        user_id,
-                        tx['account_id'],
-                        tx.get('category_id'), # Might be None
-                        tx['amount'],
-                        tx['description'],
-                        tx['date'],
-                        tx['external_id'],
-                        'import_xls'
-                    )
+                    (tx['account_id'], tx['amount'], tx['date'], tx['date'])
                 )
-                if cur.rowcount > 0:
+                match = await cur.fetchone()
+
+                if match:
+                    # Match found! Update the pending transaction instead of inserting a new one
+                    await cur.execute(
+                        """
+                        UPDATE transactions 
+                        SET status = 'confirmed', external_id = %s, date = %s, source_type = 'import_xls'
+                        WHERE id = %s;
+                        """,
+                        (tx['external_id'], tx['date'], match['id'])
+                    )
                     inserted_count += 1
+                else:
+                    # No match, insert as new
+                    await cur.execute(
+                        """
+                        INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, external_id, source_type, status)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'confirmed')
+                        ON CONFLICT (external_id) DO NOTHING;
+                        """,
+                        (
+                            user_id,
+                            tx['account_id'],
+                            tx.get('category_id'),
+                            tx['amount'],
+                            tx['description'],
+                            tx['date'],
+                            tx['external_id'],
+                            'import_xls'
+                        )
+                    )
+                    if cur.rowcount > 0:
+                        inserted_count += 1
                     
         await connection.commit()
         if conn is None:

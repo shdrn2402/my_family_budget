@@ -6,7 +6,7 @@ from bot.services.llm import parse_natural_language
 
 logger = logging.getLogger(__name__)
 
-async def parse_expense_message(text: str, conn: psycopg.AsyncConnection) -> List[Dict[str, Any]]:
+async def parse_expense_message(text: str, user_id: int, conn: psycopg.AsyncConnection) -> List[Dict[str, Any]]:
     """
     Parses a string like 'кола нал 5, такси сбер 150.5'
     Returns a list of dictionaries with parsed data.
@@ -50,7 +50,7 @@ async def parse_expense_message(text: str, conn: psycopg.AsyncConnection) -> Lis
         comment: Optional[str] = " ".join(words[amount_idx + 1:]) if amount_idx < len(words) - 1 else None
         
         # 4. Resolve Account ID
-        account_id: Optional[int] = await resolve_account(account_alias, conn) if account_alias else 4
+        account_id: Optional[int] = await resolve_account(account_alias, user_id, conn) if account_alias else 4
         if not account_id:
             account_id = 4
         
@@ -69,12 +69,24 @@ async def parse_expense_message(text: str, conn: psycopg.AsyncConnection) -> Lis
         
     return results
 
-async def resolve_account(alias: str, conn: psycopg.AsyncConnection) -> Optional[int]:
-    """Find account ID from account_aliases table."""
+async def resolve_account(alias: str, user_id: int, conn: psycopg.AsyncConnection) -> Optional[int]:
+    """Find account ID from account_aliases table or dynamically via owner_id."""
+    alias = alias.lower().strip()
+    if alias in ['карта', 'card']:
+        async with conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute(
+                "SELECT id FROM accounts WHERE type = 'card' AND owner_id = %s LIMIT 1;",
+                (user_id,)
+            )
+            row = await cur.fetchone()
+            if row:
+                return row['id']
+            return None
+
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
             "SELECT account_id FROM account_aliases WHERE name = %s;", 
-            (alias.lower(),)
+            (alias,)
         )
         row = await cur.fetchone()
         if row:
@@ -93,13 +105,13 @@ async def resolve_category_from_alias(item_name: str, conn: psycopg.AsyncConnect
             return row['category_id']
     return None
 
-async def process_expense_text(text: str, conn: psycopg.AsyncConnection) -> List[Dict[str, Any]]:
+async def process_expense_text(text: str, user_id: int, conn: psycopg.AsyncConnection) -> List[Dict[str, Any]]:
     """
     Smart router: tries fast regex-based parser first.
     If it encounters any formatting errors, falls back to LLM.
     """
     # 1. Try fast parser
-    fast_results = await parse_expense_message(text, conn)
+    fast_results = await parse_expense_message(text, user_id, conn)
     
     # Check if fast parser results are complete (have amounts)
     # Re-resolving IDs with family context if necessary
@@ -107,7 +119,7 @@ async def process_expense_text(text: str, conn: psycopg.AsyncConnection) -> List
         for item in fast_results:
             if not item.get('category_id'):
                 item['category_id'] = await resolve_category_from_alias(item['item_name'], conn)
-            resolved_acc = await resolve_account(item['account_alias'], conn) if item.get('account_alias') else 4
+            resolved_acc = await resolve_account(item['account_alias'], user_id, conn) if item.get('account_alias') else 4
             item['account_id'] = resolved_acc if resolved_acc else 4
         return fast_results
 
@@ -127,7 +139,7 @@ async def process_expense_text(text: str, conn: psycopg.AsyncConnection) -> List
         amount = item.get('amount', 0.0)
         comment = item.get('comment', None)
         
-        resolved_acc = await resolve_account(account_alias, conn) if account_alias else 4
+        resolved_acc = await resolve_account(account_alias, user_id, conn) if account_alias else 4
         account_id = resolved_acc if resolved_acc else 4
         category_id = await resolve_category_from_alias(item_name, conn)
         

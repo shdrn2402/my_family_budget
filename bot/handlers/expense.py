@@ -78,7 +78,7 @@ async def expense_message_handler(update: Update, context: ContextTypes.DEFAULT_
     async with await get_db_connection() as conn:
         from bot.database import get_user_info
         user_info = await get_user_info(user_id, conn)
-        parsed_items = await process_expense_text(text, conn)
+        parsed_items = await process_expense_text(text, user_id, conn)
         
         if not parsed_items:
             # If nothing was parsed and it didn't look like a question, maybe show a hint
@@ -106,12 +106,16 @@ async def expense_message_handler(update: Update, context: ContextTypes.DEFAULT_
                 # Source restriction check
                 from bot.database import get_account_type
                 account_type = await get_account_type(account_id, conn)
+                status = 'confirmed'
+                
                 if account_type == 'card':
-                    responses.append(
-                        "⚠️ Ручной ввод для банковских карт запрещен. Используйте загрузку выписок." if lang == 'ru'
-                        else "⚠️ Manual entry for bank cards is restricted. Please use bank statements only."
-                    )
-                    continue
+                    if abs(amount) > 150:
+                        responses.append(
+                            "⚠️ Траты по картам свыше 150 ₪ вносятся только через загрузку выписки." if lang == 'ru'
+                            else "⚠️ Manual entry for bank cards over 150 is restricted. Please use bank statements."
+                        )
+                        continue
+                    status = 'pending'
 
                 comment = item.get('comment')
                 
@@ -128,11 +132,11 @@ async def expense_message_handler(update: Update, context: ContextTypes.DEFAULT_
                 # Save to DB
                 await cur.execute(
                     """
-                    INSERT INTO transactions (user_id, account_id, category_id, amount, description, comment, date, source_type)
-                    VALUES (%s, %s, %s, %s, %s, %s, CURRENT_DATE, 'manual_text')
+                    INSERT INTO transactions (user_id, account_id, category_id, amount, description, comment, date, source_type, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, CURRENT_DATE, 'manual_text', %s)
                     RETURNING id;
                     """,
-                    (user_id, account_id, category_id, db_amount, item_name, comment)
+                    (user_id, account_id, category_id, db_amount, item_name, comment, status)
                 )
                 res = await cur.fetchone()
                 if res:
@@ -141,13 +145,16 @@ async def expense_message_handler(update: Update, context: ContextTypes.DEFAULT_
                 await conn.commit()
                 
                 comment_text = f" ({comment})" if comment else ""
-                formatted_amount = f"{db_amount:+.2f}"
+                formatted_amount = f"{db_amount:+.2f} ₪"
                 
                 if category_id:
-                    responses.append(f"✅ {item_name}: {formatted_amount} ₪{comment_text}")
+                    pending_note = ""
+                    if status == 'pending':
+                        pending_note = " (Ожидает выписки. Проверьте точность суммы!)" if lang == 'ru' else " (Pending bank statement)"
+                    responses.append(f"✅ {item_name}: {formatted_amount}{comment_text}{pending_note}")
                 else:
                     warning_text = " (категория не задана)" if lang == 'ru' else " (category missing)"
-                    responses.append(f"❓ {item_name}: {formatted_amount} ₪{comment_text}{warning_text}")
+                    responses.append(f"❓ {item_name}: {formatted_amount}{comment_text}{warning_text}")
                 
                 total_amount += db_amount
 
