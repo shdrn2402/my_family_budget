@@ -38,3 +38,7 @@ docs/history/
 # === Misc ===
 scratch/
 *.log
+
+# === Bank Statements ===
+bank_statements/*
+!bank_statements/.gitkeep
