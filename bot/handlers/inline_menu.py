@@ -199,35 +199,7 @@ async def inline_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                             (original_name, cat_id)
                         )
                         
-                        # Background task for translation to avoid blocking the UI
-                        import asyncio
-                        
-                        async def background_translate(item_name, c_id, chat_id, user_language):
-                            try:
-                                from bot.services.llm import translate_item_name
-                                translated = await translate_item_name(item_name)
-                                if translated:
-                                    logger.info(f"Auto-translated alias '{item_name}' -> '{translated}'")
-                                    async with await get_db_connection() as bg_conn:
-                                        async with bg_conn.cursor() as bg_cur:
-                                            await bg_cur.execute(
-                                                "INSERT INTO item_aliases (name, category_id) VALUES (%s, %s) ON CONFLICT (name) DO UPDATE SET category_id = EXCLUDED.category_id",
-                                                (translated, c_id)
-                                            )
-                                        await bg_conn.commit()
-                                    
-                                    success_text = get_text("alias_added", user_language, translated=translated)
-                                    await context.bot.send_message(chat_id=chat_id, text=success_text)
-                                else:
-                                    logger.warning(f"Translation returned None for '{item_name}'")
-                                    err_text = "⚠️ Gemini решил не переводить это слово (или вернул его же)." if user_language == 'ru' else "⚠️ Gemini decided not to translate this word."
-                                    await context.bot.send_message(chat_id=chat_id, text=err_text)
-                            except Exception as translation_err:
-                                logger.error(f"Failed to auto-translate or insert category alias: {translation_err}")
-                                err_text = "⚠️ Ошибка API при переводе (Gemini сейчас перегружен)." if user_language == 'ru' else "⚠️ API Error during translation (Gemini overloaded)."
-                                await context.bot.send_message(chat_id=chat_id, text=err_text)
 
-                        asyncio.create_task(background_translate(original_name, cat_id, update.effective_chat.id, lang))
                 await conn.commit()
             
             confirm_text = get_text("category_saved", lang)
