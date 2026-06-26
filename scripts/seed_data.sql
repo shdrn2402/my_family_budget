@@ -74,8 +74,7 @@ INSERT INTO budget.accounts (id, name, type, owner_id) VALUES
 (5, '{"en": "Transit (Bit/Paybox)", "ru": "Транзит (Bit/Paybox)"}', 'transit', NULL)
 ON CONFLICT (id) DO UPDATE SET 
     name = EXCLUDED.name,
-    type = EXCLUDED.type,
-    owner_id = EXCLUDED.owner_id;
+    type = EXCLUDED.type;
 
 -- Reset sequence for accounts
 SELECT setval('budget.accounts_id_seq', (SELECT max(id) FROM budget.accounts));

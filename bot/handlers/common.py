@@ -30,13 +30,25 @@ async def check_access(update: Update) -> bool:
     is_registered: bool = await check_user_exists(user_id)
     
     if not is_registered:
-        # If not in DB, check if they are in the allowed list in .env
         if user_id in Config.ALLOWED_USER_IDS:
             logger.info(f"Auto-registering allowed user {user_id}")
             name: str = update.effective_user.first_name or f"User {user_id}"
             is_admin: bool = (len(Config.ALLOWED_USER_IDS) > 0 and user_id == Config.ALLOWED_USER_IDS[0])
             success: bool = await register_user(user_id, name, is_admin=is_admin)
-            if not success:
+            
+            if success:
+                # Attempt to auto-link to a personal account based on name
+                free_accounts = await get_unlinked_accounts()
+                for acc in free_accounts:
+                    en_name = acc['name'].get('en', '').lower()
+                    ru_name = acc['name'].get('ru', '').lower()
+                    tg_name_lower = name.lower()
+                    
+                    if tg_name_lower == en_name or tg_name_lower == ru_name:
+                        await link_user_to_account(user_id, acc['id'])
+                        logger.info(f"Auto-linked user {user_id} ({name}) to account {acc['id']}")
+                        break
+            else:
                 logger.error(f"Failed to auto-register user {user_id}")
                 return False
         else:

@@ -147,14 +147,15 @@ async def expense_message_handler(update: Update, context: ContextTypes.DEFAULT_
                 comment_text = f" ({comment})" if comment else ""
                 formatted_amount = f"{db_amount:+.2f} ₪"
                 
+                pending_note = ""
+                if status == 'pending':
+                    pending_note = " (⚠️ Ожидает выписки. Важно: проверьте точность суммы!)" if lang == 'ru' else " (⚠️ Pending bank statement. Verify amount!)"
+                    
                 if category_id:
-                    pending_note = ""
-                    if status == 'pending':
-                        pending_note = " (Ожидает выписки. Проверьте точность суммы!)" if lang == 'ru' else " (Pending bank statement)"
                     responses.append(f"✅ {item_name}: {formatted_amount}{comment_text}{pending_note}")
                 else:
                     warning_text = " (категория не задана)" if lang == 'ru' else " (category missing)"
-                    responses.append(f"❓ {item_name}: {formatted_amount}{comment_text}{warning_text}")
+                    responses.append(f"❓ {item_name}: {formatted_amount}{comment_text}{warning_text}{pending_note}")
                 
                 total_amount += db_amount
 
