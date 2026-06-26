@@ -20,14 +20,14 @@ async def parse_expense_message(text: str, conn: psycopg.AsyncConnection) -> Lis
             continue
             
         words: List[str] = part.split()
-        if len(words) < 3:
+        if len(words) < 2:
             results.append({'original': part, 'error': 'not_enough_words'})
             continue
             
         # Find amount from the end to allow optional trailing comments
         amount_idx = -1
         amount = 0.0
-        for i in range(len(words)-1, 0, -1): # Need at least 2 words before amount (item_name, account_alias)
+        for i in range(len(words)-1, 0, -1): # Need at least 1 word before amount (item_name)
             try:
                 amount_str = words[i].replace(',', '.')
                 amount = float(amount_str)
@@ -36,16 +36,23 @@ async def parse_expense_message(text: str, conn: psycopg.AsyncConnection) -> Lis
             except ValueError:
                 continue
 
-        if amount_idx < 2:
+        if amount_idx < 1:
             results.append({'original': part, 'error': 'invalid_amount'})
             continue
 
-        account_alias: str = words[amount_idx - 1].lower()
-        item_name: str = " ".join(words[:amount_idx - 1]).lower()
+        if amount_idx >= 2:
+            account_alias: str = words[amount_idx - 1].lower()
+            item_name: str = " ".join(words[:amount_idx - 1]).lower()
+        else:
+            account_alias: str = ""
+            item_name: str = words[0].lower()
+
         comment: Optional[str] = " ".join(words[amount_idx + 1:]) if amount_idx < len(words) - 1 else None
         
         # 4. Resolve Account ID
-        account_id: Optional[int] = await resolve_account(account_alias, conn)
+        account_id: Optional[int] = await resolve_account(account_alias, conn) if account_alias else 4
+        if not account_id:
+            account_id = 4
         
         # 5. Resolve Category ID
         category_id: Optional[int] = await resolve_category_from_alias(item_name, conn)
@@ -100,7 +107,8 @@ async def process_expense_text(text: str, conn: psycopg.AsyncConnection) -> List
         for item in fast_results:
             if not item.get('category_id'):
                 item['category_id'] = await resolve_category_from_alias(item['item_name'], conn)
-            item['account_id'] = await resolve_account(item['account_alias'], conn)
+            resolved_acc = await resolve_account(item['account_alias'], conn) if item.get('account_alias') else 4
+            item['account_id'] = resolved_acc if resolved_acc else 4
         return fast_results
 
     # 2. Fallback to LLM
@@ -119,7 +127,8 @@ async def process_expense_text(text: str, conn: psycopg.AsyncConnection) -> List
         amount = item.get('amount', 0.0)
         comment = item.get('comment', None)
         
-        account_id = await resolve_account(account_alias, conn) if account_alias else None
+        resolved_acc = await resolve_account(account_alias, conn) if account_alias else 4
+        account_id = resolved_acc if resolved_acc else 4
         category_id = await resolve_category_from_alias(item_name, conn)
         
         results.append({

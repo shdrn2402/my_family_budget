@@ -189,7 +189,14 @@ async def inline_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             lang = user_lang or "ru"
             async with await get_db_connection() as conn:
                 async with conn.cursor(row_factory=dict_row) as cur:
-                    await cur.execute("UPDATE transactions SET category_id = %s WHERE id = %s", (cat_id, tx_id))
+                    cat_id_int = int(cat_id)
+                    await cur.execute("SELECT amount FROM transactions WHERE id = %s", (tx_id,))
+                    row = await cur.fetchone()
+                    if row:
+                        current_amount = row['amount']
+                        new_amount = abs(current_amount) if cat_id_int in [11, 12, 13] else -abs(current_amount)
+                        await cur.execute("UPDATE transactions SET category_id = %s, amount = %s WHERE id = %s", (cat_id_int, new_amount, tx_id))
+                        
                     await cur.execute("SELECT description FROM transactions WHERE id = %s", (tx_id,))
                     row = await cur.fetchone()
                     if row:

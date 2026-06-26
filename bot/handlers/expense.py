@@ -115,6 +115,16 @@ async def expense_message_handler(update: Update, context: ContextTypes.DEFAULT_
 
                 comment = item.get('comment')
                 
+                # Check for income
+                income_triggers = ['доход', 'зарплата', 'подработка', 'премия', 'плюс', 'income', 'salary']
+                is_income = False
+                if category_id in [11, 12, 13]:
+                    is_income = True
+                elif any(word in item_name.split() for word in income_triggers):
+                    is_income = True
+                    
+                db_amount = abs(amount) if is_income else -abs(amount)
+                
                 # Save to DB
                 await cur.execute(
                     """
@@ -122,7 +132,7 @@ async def expense_message_handler(update: Update, context: ContextTypes.DEFAULT_
                     VALUES (%s, %s, %s, %s, %s, %s, CURRENT_DATE, 'manual_text')
                     RETURNING id;
                     """,
-                    (user_id, account_id, category_id, -abs(amount), item_name, comment)
+                    (user_id, account_id, category_id, db_amount, item_name, comment)
                 )
                 res = await cur.fetchone()
                 if res:
@@ -131,21 +141,23 @@ async def expense_message_handler(update: Update, context: ContextTypes.DEFAULT_
                 await conn.commit()
                 
                 comment_text = f" ({comment})" if comment else ""
+                formatted_amount = f"{db_amount:+.2f}"
+                
                 if category_id:
-                    responses.append(f"✅ {item_name}: {amount} ₪{comment_text}")
+                    responses.append(f"✅ {item_name}: {formatted_amount} ₪{comment_text}")
                 else:
                     warning_text = " (категория не задана)" if lang == 'ru' else " (category missing)"
-                    responses.append(f"❓ {item_name}: {amount} ₪{comment_text}{warning_text}")
+                    responses.append(f"❓ {item_name}: {formatted_amount} ₪{comment_text}{warning_text}")
                 
-                total_amount += float(amount)
+                total_amount += db_amount
 
         if responses:
             from telegram import InlineKeyboardMarkup, InlineKeyboardButton
             
             reply_text = "\n".join(responses)
-            if len(inserted_ids) > 1 and total_amount > 0:
+            if len(inserted_ids) > 1:
                 total_label = "Итого:" if lang == 'ru' else "Total:"
-                reply_text += f"\n\n<b>{total_label}</b> {total_amount:.2f} ₪"
+                reply_text += f"\n\n<b>{total_label}</b> {total_amount:+.2f} ₪"
 
             if inserted_ids:
                 keyboard = [
