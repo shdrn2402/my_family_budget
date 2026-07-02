@@ -54,7 +54,7 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         async with await get_db_connection() as conn:
             from bot.database import get_user_info
             user_info = await get_user_info(user_id, conn)
-            parsed_items = await process_expense_text(text, conn)
+            parsed_items = await process_expense_text(text, user_id, conn)
             
             if not parsed_items:
                 await processing_msg.edit_text(heard_text + get_text("parse_error", lang), parse_mode='HTML')
@@ -82,20 +82,39 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
                         responses.append(get_text("account_not_found", lang, alias=item['account_alias'], original=item.get('original', text)))
                         continue
                     
-                    # NEW: Restrict manual entry to cash accounts only
+                    # Synchronized logic with text handler
                     from bot.database import get_account_type
                     account_type = await get_account_type(account_id, conn)
-                    if account_type != 'cash':
-                        responses.append(get_text("manual_bank_entry_denied", lang))
-                        continue
+                    status = 'confirmed'
+                    
+                    if account_type == 'card':
+                        if abs(amount) > 150:
+                            responses.append(
+                                "⚠️ Траты по картам свыше 150 ₪ вносятся только через загрузку выписки." if lang == 'ru'
+                                else "⚠️ Manual entry for bank cards over 150 is restricted. Please use bank statements."
+                            )
+                            continue
+                        status = 'pending'
+                        
+                    comment = item.get('comment')
+                    
+                    # Check for income
+                    income_triggers = ['доход', 'зарплата', 'подработка', 'премия', 'плюс', 'income', 'salary']
+                    is_income = False
+                    if category_id in [11, 12, 13]:
+                        is_income = True
+                    elif any(word in item_name.split() for word in income_triggers):
+                        is_income = True
+                        
+                    db_amount = abs(amount) if is_income else -abs(amount)
                         
                     await cur.execute(
                         """
-                        INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, source_type)
-                        VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP, 'manual')
+                        INSERT INTO transactions (user_id, account_id, category_id, amount, description, comment, date, source_type, status)
+                        VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, 'manual_voice', %s)
                         RETURNING id;
                         """,
-                        (user_id, account_id, category_id, amount, item_name)
+                        (user_id, account_id, category_id, db_amount, item_name, comment, status)
                     )
                     
                     row = await cur.fetchone()
