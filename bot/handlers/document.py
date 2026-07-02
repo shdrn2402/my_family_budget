@@ -3,7 +3,8 @@ import os
 from telegram import Update
 from telegram.ext import ContextTypes
 from bot.services.importer import import_excel_file
-from bot.database import save_transactions_bulk, get_db_connection
+from bot.database import save_transactions_bulk, get_db_connection, get_all_item_aliases
+from bot.services.categorizer import auto_categorize
 from bot.handlers.common import check_access
 from bot.texts import get_text
 
@@ -61,8 +62,17 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Save to DB using the raw transactions (trigger will auto-categorize)
+        # Save to DB using the raw transactions
         async with await get_db_connection() as conn:
+            # Load aliases to auto-categorize
+            db_aliases = await get_all_item_aliases(conn)
+            
+            # Enrich transactions with category_id
+            for tx in transactions:
+                cat_id = auto_categorize(tx['description'], tx['amount'], db_aliases)
+                if cat_id is not None:
+                    tx['category_id'] = cat_id
+
             # Save to DB
 
             inserted_count = await save_transactions_bulk(user_id, transactions, conn)

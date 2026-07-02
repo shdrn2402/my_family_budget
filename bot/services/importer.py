@@ -58,7 +58,7 @@ def parse_leumi(file_path):
             'date': date_obj,
             'amount': amount,
             'description': desc,
-            'external_id': f"leumi_{row.get('Reference', 'no_ref')}_{date_obj.strftime('%Y%m%d')}_{abs(amount)}",
+            'external_id': f"leumi_{row.get('Reference', 'no_ref')}_{date_obj.strftime('%Y%m%d')}_{amount}",
             'account_id': 3, # Family Debit
             'source_type': 'import'
         })
