@@ -159,7 +159,7 @@ async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg
                     WHERE account_id = %s 
                       AND amount = %s 
                       AND status = 'pending' 
-                      AND date BETWEEN %s::date - INTERVAL '2 days' AND %s::date + INTERVAL '2 days'
+                      AND date BETWEEN %s::date - INTERVAL '3 days' AND %s::date + INTERVAL '3 days'
                     LIMIT 1
                     FOR UPDATE SKIP LOCKED;
                     """,
@@ -172,10 +172,18 @@ async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg
                     await cur.execute(
                         """
                         UPDATE transactions 
-                        SET status = 'confirmed', external_id = %s, date = %s, source_type = 'import_xls'
+                        SET status = 'confirmed', 
+                            external_id = %s, 
+                            date = %s, 
+                            source_type = 'import_xls',
+                            comment = CASE 
+                                        WHEN comment IS NOT NULL AND comment != '' THEN description || ', ' || comment 
+                                        ELSE description 
+                                      END,
+                            description = %s
                         WHERE id = %s;
                         """,
-                        (tx['external_id'], tx['date'], match['id'])
+                        (tx['external_id'], tx['date'], tx['description'], match['id'])
                     )
                     inserted_count += 1
                 else:
@@ -239,6 +247,26 @@ async def sync_category_by_alias(description_pattern, category_id, user_id, conn
     finally:
         if conn is None:
             await connection.close()
+
+async def get_all_item_aliases(conn: psycopg.AsyncConnection | None = None) -> dict[str, int]:
+    """
+    Fetches all item aliases from the database and returns them as a dictionary mapping name -> category_id.
+    """
+    try:
+        connection = conn or await get_db_connection()
+        async with connection.cursor() as cur:
+            await cur.execute("SELECT name, category_id FROM item_aliases;")
+            result = await cur.fetchall()
+            
+        if conn is None:
+            await connection.close()
+            
+        # Ensure keys are upper case for robust matching if needed, 
+        # though clean_business_name already makes them upper.
+        return {row['name']: row['category_id'] for row in result}
+    except Exception as e:
+        logger.error(f"Database error fetching all item aliases: {e}")
+        return {}
 
 async def execute_read_only_query(sql: str, params: tuple = None) -> list:
     """
