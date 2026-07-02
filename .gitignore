@@ -39,6 +39,10 @@ docs/history/
 scratch/
 *.log
 
+# === Data ===
+data/*.yaml
+!data/*.example.yaml
+
 # === Bank Statements ===
 bank_statements/*
 !bank_statements/.gitkeep
