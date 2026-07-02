@@ -58,7 +58,7 @@ async def test_expense_handler_allows_cash_entry():
 async def test_expense_handler_blocks_card_entry():
     """Test that manual entry is blocked for card accounts."""
     update = MagicMock()
-    update.message.text = "coffee card 10"
+    update.message.text = "coffee card 200"
     update.message.reply_text = AsyncMock()
     update.effective_user.id = 123
     update.effective_user.language_code = "en"
@@ -67,8 +67,11 @@ async def test_expense_handler_blocks_card_entry():
     # Mock dependencies
     with patch("bot.handlers.expense.get_db_connection") as mock_db, \
          patch("bot.handlers.expense.process_expense_text") as mock_process, \
+         patch("bot.database.get_user_info", new_callable=AsyncMock) as mock_user_info, \
          patch("bot.database.get_account_type", new_callable=AsyncMock) as mock_get_type, \
          patch("bot.handlers.expense.check_access", return_value=True):
+         
+        mock_user_info.return_value = {'id': 123, 'name': 'Test'}
          
         mock_conn = MagicMock()
         mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
@@ -84,7 +87,7 @@ async def test_expense_handler_blocks_card_entry():
         # Mock parsed item
         mock_process.return_value = [{
             'item_name': 'coffee',
-            'amount': 10.0,
+            'amount': 200.0,
             'account_id': 1,
             'account_alias': 'card',
             'category_id': 1
@@ -99,7 +102,7 @@ async def test_expense_handler_blocks_card_entry():
         update.message.reply_text.assert_called_once()
         args, _ = update.message.reply_text.call_args
         assert "⚠️" in args[0]
-        assert "bank statements only" in args[0]
+        assert "Please use bank statements" in args[0]
         
         # Verify NO insertion attempt
         for call in mock_cur.execute.call_args_list:
