@@ -159,3 +159,88 @@ async def test_document_handler_debounce_batch():
         status_msg.edit_text.assert_any_call(
             "⏳ Получено файлов: 2. Подготовка к обработке..."
         )
+
+@pytest.mark.asyncio
+async def test_document_internal_transfers():
+    """Test that importing category 43 and 15 generates offsetting transactions."""
+    if not document_handler:
+        pytest.fail("document_handler not implemented yet")
+
+    # Reset job tracking
+    DEBOUNCE_JOBS.clear()
+
+    # Mock context & file downloads
+    context = MagicMock()
+    mock_file = AsyncMock()
+    context.bot.get_file = AsyncMock(return_value=mock_file)
+
+    # Status message mock
+    status_msg = MagicMock()
+    status_msg.edit_text = AsyncMock()
+
+    update = MagicMock()
+    update.effective_user.id = 123
+    update.effective_user.language_code = "ru"
+    doc = MagicMock()
+    doc.file_name = "statement.xlsx"
+    doc.file_id = "file_1"
+    update.message.document = doc
+    update.message.caption = None
+    update.message.reply_text = AsyncMock(return_value=status_msg)
+
+    with patch("bot.handlers.document.import_excel_file") as mock_import, \
+         patch("bot.handlers.document.save_transactions_bulk") as mock_save, \
+         patch("bot.handlers.document.create_database_dump", new_callable=AsyncMock) as mock_backup, \
+         patch("bot.handlers.document.get_all_item_aliases", new_callable=AsyncMock) as mock_aliases, \
+         patch("bot.handlers.document.check_access", return_value=True), \
+         patch("asyncio.sleep", new_callable=AsyncMock):
+
+        # Provide a transaction that resolves to category 43 and 15
+        mock_import.return_value = [
+            {'date': '2026-05-06', 'amount': -100.0, 'description': 'ATM CASH DEPOSIT', 'external_id': 'id_43', 'account_id': 1},
+            {'date': '2026-05-07', 'amount': -50.0, 'description': 'BIT PAYMENT', 'external_id': 'id_15', 'account_id': 1},
+            {'date': '2026-05-08', 'amount': 70.0, 'description': 'BIT RCPT', 'external_id': 'id_15_pos', 'account_id': 1}
+        ]
+        
+        # We need auto_categorize to assign 43 and 15 based on description
+        # Mock aliases to simulate DB state
+        mock_aliases.return_value = {
+            'atm cash deposit': 43,
+            'bit payment': 15,
+            'bit rcpt': 15
+        }
+
+        mock_save.return_value = 6  # 3 originals + 3 offsets
+        mock_backup.return_value = "/app/backups/db_backup_test.sql"
+
+        # Trigger processing
+        await document_handler(update, context)
+        task = DEBOUNCE_JOBS[123]['task']
+        await task
+
+        mock_save.assert_called_once()
+        saved_txs = mock_save.call_args[0][1]
+        
+        # We expect 6 transactions total
+        assert len(saved_txs) == 6
+        
+        # Find offset for 43 (Cash)
+        cash_offsets = [tx for tx in saved_txs if tx['external_id'] == 'id_43_offset']
+        assert len(cash_offsets) == 1
+        assert cash_offsets[0]['amount'] == 100.0
+        assert cash_offsets[0]['account_id'] == 4
+        assert cash_offsets[0]['category_id'] == 43
+
+        # Find offset for 15 (Bit Payment)
+        bit_payment_offsets = [tx for tx in saved_txs if tx['external_id'] == 'id_15_offset']
+        assert len(bit_payment_offsets) == 1
+        assert bit_payment_offsets[0]['amount'] == 50.0
+        assert bit_payment_offsets[0]['account_id'] == 5
+        assert bit_payment_offsets[0]['category_id'] == 15
+
+        # Find offset for 15 (Bit Receipt)
+        bit_rcpt_offsets = [tx for tx in saved_txs if tx['external_id'] == 'id_15_pos_offset']
+        assert len(bit_rcpt_offsets) == 1
+        assert bit_rcpt_offsets[0]['amount'] == -70.0
+        assert bit_rcpt_offsets[0]['account_id'] == 5
+        assert bit_rcpt_offsets[0]['category_id'] == 15

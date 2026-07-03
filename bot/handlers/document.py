@@ -209,6 +209,25 @@ async def process_batch(
                 if cat_id is not None:
                     tx['category_id'] = cat_id
 
+            # Generate offsetting transactions for internal transfers (Cash & Transit)
+            offsetting_transactions = []
+            for tx in all_transactions:
+                cat_id = tx.get('category_id')
+                if cat_id == 43:  # Cash Withdrawal
+                    offset_tx = tx.copy()
+                    offset_tx['amount'] = -tx['amount']
+                    offset_tx['account_id'] = 4  # Shared Cash
+                    offset_tx['external_id'] = f"{tx.get('external_id', '')}_offset"
+                    offsetting_transactions.append(offset_tx)
+                elif cat_id == 15:  # Internal Transfer (Bit/Paybox)
+                    offset_tx = tx.copy()
+                    offset_tx['amount'] = -tx['amount']
+                    offset_tx['account_id'] = 5  # Transit
+                    offset_tx['external_id'] = f"{tx.get('external_id', '')}_offset"
+                    offsetting_transactions.append(offset_tx)
+            
+            all_transactions.extend(offsetting_transactions)
+
             # Save to DB
             inserted_count = await save_transactions_bulk(user_id, all_transactions, conn)
     except Exception as db_err:

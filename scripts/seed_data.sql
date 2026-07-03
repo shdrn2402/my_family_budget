@@ -97,7 +97,9 @@ INSERT INTO budget.account_aliases (name, account_id) VALUES
 ('нал', 4),
 ('наличные', 4),
 ('кэш', 4),
-('cash', 4)
+('cash', 4),
+('bit', 5),
+('paybox', 5)
 ON CONFLICT (name) DO UPDATE SET
     account_id = EXCLUDED.account_id;
 
