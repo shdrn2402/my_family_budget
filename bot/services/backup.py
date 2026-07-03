@@ -15,6 +15,13 @@ async def create_database_dump() -> str | None:
     Returns the file path to the dump or None if it failed.
     """
     try:
+        import asyncio
+        import shutil
+
+        if not shutil.which("pg_dump"):
+            logger.error("pg_dump utility not found on the system.")
+            return None
+
         backup_dir = "/app/backups"
         os.makedirs(backup_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -34,9 +41,16 @@ async def create_database_dump() -> str | None:
             "-f", filepath
         ]
         
-        result = subprocess.run(cmd, env=env, capture_output=True, text=True)
-        if result.returncode != 0:
-            logger.error(f"pg_dump failed: {result.stderr}")
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode != 0:
+            logger.error(f"pg_dump failed: {stderr.decode('utf-8', errors='replace')}")
             return None
             
         return filepath

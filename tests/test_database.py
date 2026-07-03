@@ -34,6 +34,18 @@ class MockCursor:
     async def fetchone(self):
         return {"exists": self.exists_val}
 
+    async def fetchall(self):
+        if self.exists_val:
+            return [
+                {"tablename": "users"},
+                {"tablename": "accounts"},
+                {"tablename": "account_aliases"},
+                {"tablename": "categories"},
+                {"tablename": "item_aliases"},
+                {"tablename": "transactions"}
+            ]
+        return []
+
 class MockConnection:
     def __init__(self, exists_val=False):
         self.cursor_obj = MockCursor(exists_val)
@@ -52,14 +64,14 @@ class MockConnection:
 
 @pytest.mark.asyncio
 async def test_init_db_already_initialized():
-    """Test init_db when the database is already initialized (users table exists)."""
+    """Test init_db when the database is already initialized (all tables exist)."""
     test_conn = MockConnection(exists_val=True)
     
     with patch("bot.database.get_db_connection", return_value=test_conn):
         await init_db()
         
     assert len(test_conn.cursor_obj.execute_calls) == 1
-    assert "SELECT EXISTS" in test_conn.cursor_obj.execute_calls[0][0]
+    assert "SELECT tablename FROM pg_tables" in test_conn.cursor_obj.execute_calls[0][0]
 
 
 @pytest.mark.asyncio
@@ -67,20 +79,25 @@ async def test_init_db_restore_from_backup():
     """Test init_db when database is empty and a backup file is found."""
     test_conn = MockConnection(exists_val=False)
     
+    mock_process = AsyncMock()
+    mock_process.communicate.return_value = (b"", b"")
+    mock_process.returncode = 0
+
     with patch("bot.database.get_db_connection", return_value=test_conn), \
          patch("os.path.exists", return_value=True), \
          patch("glob.glob", return_value=["/app/backups/db_backup_20260702_182743.sql"]), \
-         patch("subprocess.run") as mock_run:
+         patch("shutil.which", return_value="/usr/bin/psql"), \
+         patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec:
          
-        mock_run.return_value = MagicMock(returncode=0)
-        
         await init_db()
         
-        # Verify psql was called to restore
-        mock_run.assert_called_once()
-        args, kwargs = mock_run.call_args
-        cmd = args[0]
+        # Verify psql was called to restore asynchronously
+        mock_exec.assert_called_once()
+        args, kwargs = mock_exec.call_args
+        cmd = args
         assert "psql" in cmd
+        assert "-v" in cmd
+        assert "ON_ERROR_STOP=1" in cmd
         assert "/app/backups/db_backup_20260702_182743.sql" in cmd
 
 

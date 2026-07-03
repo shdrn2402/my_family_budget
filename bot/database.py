@@ -373,21 +373,23 @@ async def init_db() -> None:
 
     try:
         async with conn.cursor() as cur:
-            # Check if users table exists in schema budget
+            # Check if all required tables exist in schema budget
+            required_tables = {"users", "accounts", "account_aliases", "categories", "item_aliases", "transactions"}
             await cur.execute(
-                "SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'budget' AND tablename = 'users');"
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'budget';"
             )
-            res = await cur.fetchone()
-            users_exists = res['exists'] if res else False
+            res = await cur.fetchall()
+            existing_tables = {row['tablename'] for row in res} if res else set()
+            db_initialized = required_tables.issubset(existing_tables)
 
-            if not users_exists:
+            if not db_initialized:
                 # Close the connection to release locks before restore
                 await conn.close()
                 conn = None
 
                 import os
                 import glob
-                import subprocess
+                import shutil
 
                 # Find the latest backup
                 backup_dirs = ["/app/backups", "backups", "../backups"]
@@ -401,8 +403,11 @@ async def init_db() -> None:
                 if backup_files:
                     latest_backup = sorted(backup_files)[-1]
 
-                if latest_backup:
-                    logger.info(f"Database is empty. Latest backup found: {latest_backup}. Preparing restore...")
+                # Pre-check if psql exists in the system
+                psql_path = shutil.which("psql")
+
+                if latest_backup and psql_path:
+                    logger.info(f"Database structure is incomplete. Latest backup found: {latest_backup}. Preparing restore...")
                     
                     # Drop schema if exists to ensure clean restore
                     try:
@@ -421,6 +426,7 @@ async def init_db() -> None:
                             
                         cmd = [
                             "psql",
+                            "-v", "ON_ERROR_STOP=1",
                             "-h", Config.DB_HOST,
                             "-p", str(Config.DB_PORT),
                             "-U", Config.DB_USER,
@@ -428,26 +434,36 @@ async def init_db() -> None:
                             "-f", latest_backup
                         ]
                         
-                        logger.info(f"Restoring database from backup using psql...")
-                        result = subprocess.run(cmd, env=env, capture_output=True, text=True)
-                        if result.returncode != 0:
-                            logger.error(f"psql restore failed with return code {result.returncode}: {result.stderr}")
-                            raise Exception(result.stderr)
+                        logger.info("Restoring database from backup using psql asynchronously...")
+                        process = await asyncio.create_subprocess_exec(
+                            *cmd,
+                            env=env,
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE
+                        )
+                        stdout, stderr = await process.communicate()
+                        
+                        if process.returncode != 0:
+                            error_msg = stderr.decode('utf-8', errors='replace')
+                            logger.error(f"psql restore failed with return code {process.returncode}: {error_msg}")
+                            raise Exception(error_msg)
                         
                         logger.info("Database successfully restored from backup.")
                         return
                     except Exception as restore_err:
                         logger.error(f"Failed to restore from backup: {restore_err}. Falling back to default initialization.")
+                elif latest_backup and not psql_path:
+                    logger.warning("Latest backup is available, but 'psql' client was not found on the system. Falling back to default initialization.")
 
                 # Fallback to schema and seed data
                 logger.info("Running schema initialization...")
                 conn = await get_db_connection()
                 async with conn.cursor() as cur:
-                    with open("scripts/schema.sql", "r") as f:
+                    with open("scripts/schema.sql", "r", encoding="utf-8") as f:
                         await cur.execute(f.read())
                     
                     try:
-                        with open("scripts/seed_data.sql", "r") as f:
+                        with open("scripts/seed_data.sql", "r", encoding="utf-8") as f:
                             await cur.execute(f.read())
                         logger.info("Database seeded successfully.")
                     except FileNotFoundError:
