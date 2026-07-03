@@ -33,12 +33,13 @@ def main() -> None:
 
     from bot.handlers.inline_menu import inline_menu_handler
     from telegram.ext import CallbackQueryHandler
-    from bot.handlers.admin import backup_handler
+    from bot.handlers.admin import backup_handler, uncategorized_handler
     
     # Register handlers
     application.add_handler(CommandHandler("start", start_handler))
     application.add_handler(CommandHandler("history", history_handler))
     application.add_handler(CommandHandler("backup", backup_handler))
+    application.add_handler(CommandHandler("uncategorized", uncategorized_handler))
     
     # Handler for inline keyboard clicks
     application.add_handler(CallbackQueryHandler(inline_menu_handler))

@@ -105,7 +105,7 @@ def parse_isracard(file_path, account_id=2):
                     voucher = str(sub_row[6]).strip()
                     if voucher.lower() == 'nan' or not voucher:
                         continue
-
+                        
                     raw_date = str(sub_row[0])
                     # Format is DD.MM.YY
                     date_obj = datetime.strptime(raw_date, '%d.%m.%y')
@@ -117,7 +117,7 @@ def parse_isracard(file_path, account_id=2):
                         charge_amount = float(clean_amount)
                     except (ValueError, TypeError):
                         continue
-                        
+                    
                     transactions.append({
                         'date': date_obj,
                         'amount': -abs(charge_amount), # Always expense for cards in these tables
