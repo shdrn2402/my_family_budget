@@ -12,6 +12,13 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
+# Install postgresql-client-18 for pg_dump
+RUN apt-get update && apt-get install -y wget gnupg2 lsb-release && \
+    wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg && \
+    echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list && \
+    apt-get update && apt-get install -y postgresql-client-18 && \
+    rm -rf /var/lib/apt/lists/*
+
 # Copy dependency files first (better layer caching)
 COPY "pyproject.toml" "uv.lock" ".python-version" ./
 

@@ -381,25 +381,85 @@ async def init_db() -> None:
             users_exists = res['exists'] if res else False
 
             if not users_exists:
-                logger.info("Database is empty. Running schema initialization...")
-                # Execute schema
-                with open("scripts/schema.sql", "r") as f:
-                    await cur.execute(f.read())
+                # Close the connection to release locks before restore
+                await conn.close()
+                conn = None
+
+                import os
+                import glob
+                import subprocess
+
+                # Find the latest backup
+                backup_dirs = ["/app/backups", "backups", "../backups"]
+                existing_dirs = [d for d in backup_dirs if os.path.exists(d)]
                 
-                # Execute seed data
-                try:
-                    with open("scripts/seed_data.sql", "r") as f:
-                        await cur.execute(f.read())
-                    logger.info("Database seeded successfully.")
-                except FileNotFoundError:
-                    logger.warning("scripts/seed_data.sql not found, skipping seed.")
+                backup_files = []
+                for d in existing_dirs:
+                    backup_files.extend(glob.glob(os.path.join(d, "db_backup_*.sql")))
+
+                latest_backup = None
+                if backup_files:
+                    latest_backup = sorted(backup_files)[-1]
+
+                if latest_backup:
+                    logger.info(f"Database is empty. Latest backup found: {latest_backup}. Preparing restore...")
                     
-                await conn.commit()
+                    # Drop schema if exists to ensure clean restore
+                    try:
+                        conn_temp = await get_db_connection()
+                        async with conn_temp.cursor() as cur_temp:
+                            await cur_temp.execute("DROP SCHEMA IF EXISTS budget CASCADE;")
+                            await conn_temp.commit()
+                        await conn_temp.close()
+                    except Exception as drop_err:
+                        logger.warning(f"Failed to drop budget schema before restore: {drop_err}")
+
+                    try:
+                        env = os.environ.copy()
+                        if Config.DB_PASSWORD:
+                            env["PGPASSWORD"] = Config.DB_PASSWORD
+                            
+                        cmd = [
+                            "psql",
+                            "-h", Config.DB_HOST,
+                            "-p", str(Config.DB_PORT),
+                            "-U", Config.DB_USER,
+                            "-d", Config.DB_NAME,
+                            "-f", latest_backup
+                        ]
+                        
+                        logger.info(f"Restoring database from backup using psql...")
+                        result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+                        if result.returncode != 0:
+                            logger.error(f"psql restore failed with return code {result.returncode}: {result.stderr}")
+                            raise Exception(result.stderr)
+                        
+                        logger.info("Database successfully restored from backup.")
+                        return
+                    except Exception as restore_err:
+                        logger.error(f"Failed to restore from backup: {restore_err}. Falling back to default initialization.")
+
+                # Fallback to schema and seed data
+                logger.info("Running schema initialization...")
+                conn = await get_db_connection()
+                async with conn.cursor() as cur:
+                    with open("scripts/schema.sql", "r") as f:
+                        await cur.execute(f.read())
+                    
+                    try:
+                        with open("scripts/seed_data.sql", "r") as f:
+                            await cur.execute(f.read())
+                        logger.info("Database seeded successfully.")
+                    except FileNotFoundError:
+                        logger.warning("scripts/seed_data.sql not found, skipping seed.")
+                        
+                    await conn.commit()
                 logger.info("Database initialization complete.")
             else:
                 logger.info("Database already initialized, skipping.")
     except Exception as e:
         logger.error(f"Error during database initialization: {e}")
     finally:
-        await conn.close()
+        if conn:
+            await conn.close()
 
