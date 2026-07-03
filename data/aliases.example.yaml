@@ -1,7 +1,0 @@
-# This is an example of the category aliases file.
-# The keys are the cleaned business names (substrings found in the statement description)
-# The values are the integer category IDs from your database.
-
-"McDonalds": 18
-"Super-Pharm": 17
-"Netflix": 7

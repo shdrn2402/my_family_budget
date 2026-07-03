@@ -46,3 +46,7 @@ data/*.yaml
 # === Bank Statements ===
 bank_statements/*
 !bank_statements/.gitkeep
+
+# === Deprecated ===
+scripts/deprecated/
+
