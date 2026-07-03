@@ -7,6 +7,7 @@ from bot.database import save_transactions_bulk, get_db_connection, get_all_item
 from bot.services.categorizer import auto_categorize
 from bot.handlers.common import check_access
 from bot.texts import get_text
+from bot.services.backup import create_database_dump
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # We don't reply here to avoid noise if user sends other docs, 
         # but for budget bot we can send a hint.
         await update.message.reply_text(
-            "Пожалуйста, пришлите файл в формате Excel (.xls или .xlsx)" if lang == 'ru' 
+            "Пожалуйста, пришлите файл в формате Excel (.xls or .xlsx)" if lang == 'ru' 
             else "Please send an Excel file (.xls or .xlsx)"
         )
         return
@@ -62,8 +63,20 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
+        # Create pre-import database dump
+        try:
+            logger.info("Creating database backup before importing transactions...")
+            backup_path = await create_database_dump()
+            if backup_path:
+                logger.info(f"Database backup created successfully: {backup_path}")
+            else:
+                logger.warning("Failed to create database backup before importing. Proceeding with import.")
+        except Exception as backup_err:
+            logger.error(f"Error during pre-import backup creation: {backup_err}. Proceeding with import.")
+
         # Save to DB using the raw transactions
         async with await get_db_connection() as conn:
+
             # Load aliases to auto-categorize
             db_aliases = await get_all_item_aliases(conn)
             

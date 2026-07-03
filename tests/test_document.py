@@ -40,17 +40,22 @@ async def test_document_handler_success():
     
     with patch("bot.handlers.document.import_excel_file") as mock_import, \
          patch("bot.handlers.document.save_transactions_bulk") as mock_save, \
+         patch("bot.handlers.document.create_database_dump", new_callable=AsyncMock) as mock_backup, \
          patch("bot.handlers.document.check_access", return_value=True):
          
         # Mock parsing returning 1 transaction
         mock_import.return_value = [{'date': '2026-05-06', 'amount': -10, 'description': 'Test', 'account_id': 2}]
         mock_save.return_value = 1 # 1 inserted row
+        mock_backup.return_value = "/app/backups/db_backup_test.sql"
         
         await document_handler(update, context)
         
         # Verify downloading
         context.bot.get_file.assert_called_once_with("file_123")
         mock_file.download_to_drive.assert_called_once()
+        
+        # Verify backup was triggered
+        mock_backup.assert_called_once()
         
         # Verify parsing was called with our hint from caption
         mock_import.assert_called_once_with("temp_imports/123_statement.xlsx", hint="isracard")
@@ -61,3 +66,4 @@ async def test_document_handler_success():
         # Verify success message
         args, _ = status_msg.edit_text.call_args
         assert "✅" in args[0] or "успешно" in args[0].lower() or "завершен" in args[0].lower()
+
