@@ -57,7 +57,7 @@ async def uncategorized_handler(update: Update, context: ContextTypes.DEFAULT_TY
     lang = update.effective_user.language_code or 'ru'
     
     # Let user know we are searching
-    message = await update.message.reply_text("🔍 Ищу неразмеченные транзакции..." if lang == 'ru' else "🔍 Searching for uncategorized transactions...")
+    message = await update.effective_message.reply_text("🔍 Ищу неразмеченные транзакции..." if lang == 'ru' else "🔍 Searching for uncategorized transactions...")
     
     async with await get_db_connection() as conn:
         async with conn.cursor(row_factory=dict_row) as cur:
@@ -92,7 +92,7 @@ async def uncategorized_handler(update: Update, context: ContextTypes.DEFAULT_TY
             [InlineKeyboardButton(get_text("edit_records_button", lang), callback_data=f"edit_main:{','.join(ids)}")]
         ]
         
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             reply_text, 
             reply_markup=InlineKeyboardMarkup(keyboard), 
             parse_mode='HTML'
