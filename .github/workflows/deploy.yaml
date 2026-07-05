@@ -1,0 +1,110 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run Pytest
+        env:
+          TELEGRAM_TOKEN: "test_token"
+        run: uv run pytest
+
+  build-and-push:
+    name: Build and Push Docker Image
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/shdrn2402/my_family_budget/budget_bot:latest
+
+  deploy:
+    name: Deploy to VPS
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Execute remote ssh commands
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          ALLOWED_USER_IDS: ${{ secrets.ALLOWED_USER_IDS }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          PGADMIN_DEFAULT_EMAIL: ${{ secrets.PGADMIN_DEFAULT_EMAIL }}
+          PGADMIN_DEFAULT_PASSWORD: ${{ secrets.PGADMIN_DEFAULT_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: TELEGRAM_TOKEN,ALLOWED_USER_IDS,DB_NAME,DB_USER,DB_PASSWORD,PGADMIN_DEFAULT_EMAIL,PGADMIN_DEFAULT_PASSWORD,GEMINI_API_KEY
+          script: |
+            cd my_family_budget
+            
+            # Generate .env from secrets
+            cat <<EOF > .env
+            TELEGRAM_TOKEN=$TELEGRAM_TOKEN
+            ALLOWED_USER_IDS=$ALLOWED_USER_IDS
+            DB_NAME=$DB_NAME
+            DB_USER=$DB_USER
+            DB_PASSWORD=$DB_PASSWORD
+            PGADMIN_DEFAULT_EMAIL=$PGADMIN_DEFAULT_EMAIL
+            PGADMIN_DEFAULT_PASSWORD=$PGADMIN_DEFAULT_PASSWORD
+            GEMINI_API_KEY=$GEMINI_API_KEY
+            EOF
+            
+            mkdir -p backups
+            
+            # Dump database before pulling new changes (ignore if container is missing)
+            docker compose exec -T pgdatabase pg_dump -U $DB_USER -F c $DB_NAME > backups/backup_before_deploy_$(date +%Y%m%d_%H%M%S).dump || echo "Backup skipped (container might not be running)"
+            
+            # Authenticate with GHCR
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # Pull latest repository changes
+            git pull origin main
+            
+            # Pull new bot image
+            docker compose pull budget_bot
+            
+            # Restart containers in detached mode
+            docker compose up -d
+            
+            # Prune unused images to save disk space
+            docker image prune -f
