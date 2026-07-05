@@ -70,15 +70,15 @@ The project features a fully automated CI/CD pipeline configured via GitHub Acti
 Create a `.env` file in the root directory (based on `env.example`):
 ```env
 TELEGRAM_TOKEN="your_telegram_bot_token"
-ALLOWED_USER_IDS="123456789,987654321"
+ALLOWED_USER_IDS="your_allowed_telegram_user_ids"
 DB_HOST="pgdatabase"
 DB_PORT=5432
 DB_NAME="budget"
 DB_USER="budget_user"
 DB_PASSWORD="your_db_password"
-PGADMIN_DEFAULT_EMAIL="admin@family.local"
-PGADMIN_DEFAULT_PASSWORD="secure_pgadmin_password"
-GEMINI_API_KEY="your_gemini_api_token"
+PGADMIN_DEFAULT_EMAIL="your_pgadmin_email"
+PGADMIN_DEFAULT_PASSWORD="your_pgadmin_password"
+GEMINI_API_KEY="your_gemini_api_key"
 ```
 
 ### 2. Running Locally with Docker
