@@ -112,6 +112,9 @@ jobs:
               git pull origin main
             fi
             
+            # Setup compose file since actual compose.yaml is gitignored
+            cp compose.example.yaml compose.yaml
+            
             # Pull new bot image
             docker compose pull budget_bot
             
