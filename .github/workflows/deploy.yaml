@@ -102,8 +102,15 @@ jobs:
             # Authenticate with GHCR
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
-            # Pull latest repository changes
-            git pull origin main
+            # Pull latest repository changes (initialize if first time)
+            if [ ! -d ".git" ]; then
+              git init
+              git remote add origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+              git fetch
+              git reset --hard origin/main
+            else
+              git pull origin main
+            fi
             
             # Pull new bot image
             docker compose pull budget_bot
