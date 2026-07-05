@@ -1,5 +1,9 @@
 import pytest
+import os
 from unittest.mock import patch
+
+os.environ["GEMINI_API_KEY"] = "test_key"
+os.environ["TELEGRAM_TOKEN"] = "test_token"
 
 class FakeCursor:
     async def __aenter__(self):
@@ -15,6 +19,12 @@ class FakeCursor:
         return {"id": 999999}
 
 class FakeConnection:
+    async def __aenter__(self):
+        return self
+        
+    async def __aexit__(self, exc_type, exc, tb):
+        pass
+
     def cursor(self):
         return FakeCursor()
         

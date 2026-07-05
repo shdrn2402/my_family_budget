@@ -29,6 +29,7 @@ jobs:
       - name: Run Pytest
         env:
           TELEGRAM_TOKEN: "test_token"
+          GEMINI_API_KEY: "test_key"
         run: uv run pytest
 
   build-and-push:

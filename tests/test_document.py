@@ -8,6 +8,10 @@ except ImportError:
     document_handler = None
     DEBOUNCE_JOBS = {}
 
+async def mock_get_db_conn():
+    from tests.conftest import FakeConnection
+    return FakeConnection()
+
 @pytest.mark.asyncio
 async def test_document_handler_success():
     """Test successful document upload and parsing via Telegram (debounced)."""
@@ -43,12 +47,15 @@ async def test_document_handler_success():
          patch("bot.handlers.document.save_transactions_bulk") as mock_save, \
          patch("bot.handlers.document.create_database_dump", new_callable=AsyncMock) as mock_backup, \
          patch("bot.handlers.document.check_access", return_value=True), \
+         patch("bot.handlers.document.get_db_connection", side_effect=mock_get_db_conn), \
+         patch("bot.handlers.document.get_all_item_aliases", new_callable=AsyncMock) as mock_aliases, \
          patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
          
         # Mock parsing returning 1 transaction
         mock_import.return_value = [{'date': '2026-05-06', 'amount': -10, 'description': 'Test', 'account_id': 2}]
         mock_save.return_value = 1 # 1 inserted row
         mock_backup.return_value = "/app/backups/db_backup_test.sql"
+        mock_aliases.return_value = {}
         
         await document_handler(update, context)
         
@@ -120,6 +127,8 @@ async def test_document_handler_debounce_batch():
          patch("bot.handlers.document.save_transactions_bulk") as mock_save, \
          patch("bot.handlers.document.create_database_dump", new_callable=AsyncMock) as mock_backup, \
          patch("bot.handlers.document.check_access", return_value=True), \
+         patch("bot.handlers.document.get_db_connection", side_effect=mock_get_db_conn), \
+         patch("bot.handlers.document.get_all_item_aliases", new_callable=AsyncMock) as mock_aliases, \
          patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
 
         mock_import.side_effect = [
@@ -128,6 +137,7 @@ async def test_document_handler_debounce_batch():
         ]
         mock_save.return_value = 2
         mock_backup.return_value = "/app/backups/db_backup_test.sql"
+        mock_aliases.return_value = {}
 
         # Trigger first document
         await document_handler(update1, context)
@@ -193,6 +203,7 @@ async def test_document_internal_transfers():
          patch("bot.handlers.document.create_database_dump", new_callable=AsyncMock) as mock_backup, \
          patch("bot.handlers.document.get_all_item_aliases", new_callable=AsyncMock) as mock_aliases, \
          patch("bot.handlers.document.check_access", return_value=True), \
+         patch("bot.handlers.document.get_db_connection", side_effect=mock_get_db_conn), \
          patch("asyncio.sleep", new_callable=AsyncMock):
 
         # Provide a transaction that resolves to category 43 and 15
