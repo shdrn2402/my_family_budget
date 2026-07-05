@@ -37,6 +37,7 @@ docs/history/
 
 # === Misc ===
 scratch/
+learning/
 *.log
 
 # === Data ===
