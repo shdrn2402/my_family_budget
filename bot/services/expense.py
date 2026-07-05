@@ -3,6 +3,11 @@ from typing import List, Dict, Any, Optional
 import psycopg
 from psycopg.rows import dict_row
 from bot.services.llm import parse_natural_language
+from bot.database import get_account_type
+from bot.texts import get_text
+
+INCOME_CATEGORY_IDS = {11, 12, 13}
+INCOME_KEYWORDS = ['доход', 'зарплата', 'подработка', 'премия', 'плюс', 'income', 'salary']
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +55,13 @@ async def parse_expense_message(text: str, user_id: int, conn: psycopg.AsyncConn
         comment: Optional[str] = " ".join(words[amount_idx + 1:]) if amount_idx < len(words) - 1 else None
         
         # 4. Resolve Account ID
-        account_id: Optional[int] = await resolve_account(account_alias, user_id, conn) if account_alias else 4
-        if not account_id:
-            account_id = 4
+        account_id: Optional[int] = await resolve_account(account_alias, user_id, conn) if account_alias else None
+        
+        # If an account was supposedly provided but we couldn't resolve it, this is likely natural language.
+        # We append an error to trigger LLM fallback.
+        if account_alias and not account_id:
+            results.append({'original': part, 'error': 'account_not_found_fallback'})
+            continue
         
         # 5. Resolve Category ID
         category_id: Optional[int] = await resolve_category_from_alias(item_name, conn)
@@ -119,8 +128,8 @@ async def process_expense_text(text: str, user_id: int, conn: psycopg.AsyncConne
         for item in fast_results:
             if not item.get('category_id'):
                 item['category_id'] = await resolve_category_from_alias(item['item_name'], conn)
-            resolved_acc = await resolve_account(item['account_alias'], user_id, conn) if item.get('account_alias') else 4
-            item['account_id'] = resolved_acc if resolved_acc else 4
+            resolved_acc = await resolve_account(item['account_alias'], user_id, conn) if item.get('account_alias') else None
+            item['account_id'] = resolved_acc
         return fast_results
 
     # 2. Fallback to LLM
@@ -139,9 +148,10 @@ async def process_expense_text(text: str, user_id: int, conn: psycopg.AsyncConne
         amount = item.get('amount', 0.0)
         comment = item.get('comment', None)
         
-        resolved_acc = await resolve_account(account_alias, user_id, conn) if account_alias else 4
-        account_id = resolved_acc if resolved_acc else 4
+        resolved_acc = await resolve_account(account_alias, user_id, conn) if account_alias else None
+        account_id = resolved_acc
         category_id = await resolve_category_from_alias(item_name, conn)
+        tx_date = item.get('date')
         
         results.append({
             'original': text,
@@ -150,7 +160,64 @@ async def process_expense_text(text: str, user_id: int, conn: psycopg.AsyncConne
             'account_id': account_id,
             'account_alias': account_alias,
             'category_id': category_id,
-            'comment': comment
+            'comment': comment,
+            'date': tx_date
         })
         
     return results
+
+async def save_expense_item(item: dict, user_id: int, lang: str, conn: psycopg.AsyncConnection, source_type: str) -> dict:
+    """
+    Saves a single parsed expense item to the database.
+    Checks account type limits, identifies income vs expense, and inserts into DB.
+    Returns {"id": int, "db_amount": float, "status": str} on success,
+    or {"error": str} on failure.
+    """
+    amount = item.get('amount', 0.0)
+    account_id = item.get('account_id')
+    category_id = item.get('category_id')
+    item_name = item.get('item_name', '')
+    comment = item.get('comment')
+    
+    if not account_id:
+        return {"error": "account_not_found"}
+        
+    account_type = await get_account_type(account_id, conn)
+    status = 'confirmed'
+    
+    if account_type == 'card':
+        if abs(amount) > 150:
+            return {"error": "card_limit_exceeded"}
+        status = 'pending'
+        
+    is_income = False
+    if category_id in INCOME_CATEGORY_IDS:
+        is_income = True
+    elif any(word in item_name.split() for word in INCOME_KEYWORDS):
+        is_income = True
+        
+    db_amount = abs(amount) if is_income else -abs(amount)
+    
+    tx_date = item.get('date')
+    date_field = "CURRENT_DATE" if not tx_date else "%s::date"
+    
+    query = f"""
+        INSERT INTO transactions (user_id, account_id, category_id, amount, description, comment, date, source_type, status)
+        VALUES (%s, %s, %s, %s, %s, %s, {date_field}, %s, %s)
+        RETURNING id;
+    """
+    
+    params = [user_id, account_id, category_id, db_amount, item_name, comment]
+    if tx_date:
+        params.append(tx_date)
+    params.extend([source_type, status])
+    
+    async with conn.cursor() as cur:
+        await cur.execute(query, tuple(params))
+        row = await cur.fetchone()
+        
+    return {
+        "id": row['id'] if row else None,
+        "db_amount": db_amount,
+        "status": status
+    }

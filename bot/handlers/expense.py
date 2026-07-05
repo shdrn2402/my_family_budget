@@ -2,7 +2,7 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 from bot.services.expense import process_expense_text
-from bot.handlers.analytics import analytics_handler
+
 from bot.handlers.common import check_access
 from bot.database import get_db_connection
 from bot.texts import get_text
@@ -62,18 +62,6 @@ async def expense_message_handler(update: Update, context: ContextTypes.DEFAULT_
                     await update.message.reply_text(error_msg)
                 return
 
-    # --- ANALYTICS ROUTING (Heuristic) ---
-    question_keywords = [
-        "сколько", "какой", "покажи", "анализ", "сводка", "отчет", "итог", "расход", "сравни", "сравнение", "график", "диаграмма",
-        "дай", "структура", "структуру", "статистика", "статистику",
-        "how much", "show", "report", "total", "what", "analyze", "summary", "spending", "compare", "chart", "diagram", "give", "structure", "stats"
-    ]
-    is_question = "?" in text or any(text.lower().startswith(word) for word in question_keywords)
-    
-    if is_question:
-        await analytics_handler(update, context)
-        return
-
     # --- EXPENSE PROCESSING ---
     async with await get_db_connection() as conn:
         from bot.database import get_user_info
@@ -94,55 +82,32 @@ async def expense_message_handler(update: Update, context: ContextTypes.DEFAULT_
                     responses.append(f"❌ Error: {item['error']} for '{item.get('original', text)}'")
                     continue
                 
-                amount = item['amount']
-                account_id = item['account_id']
-                category_id = item['category_id']
-                item_name = item['item_name']
+                from bot.services.expense import save_expense_item
+                save_res = await save_expense_item(item, user_id, lang, conn, 'manual_text')
                 
-                if not account_id:
-                    responses.append(f"❌ Account not found for '{item.get('original', text)}'")
-                    continue
-
-                # Source restriction check
-                from bot.database import get_account_type
-                account_type = await get_account_type(account_id, conn)
-                status = 'confirmed'
-                
-                if account_type == 'card':
-                    if abs(amount) > 150:
+                if "error" in save_res:
+                    if save_res["error"] == "account_not_found":
+                        responses.append(f"❌ Account not found for '{item.get('original', text)}'")
+                    elif save_res["error"] == "card_limit_exceeded":
                         responses.append(
                             "⚠️ Траты по картам свыше 150 ₪ вносятся только через загрузку выписки." if lang == 'ru'
                             else "⚠️ Manual entry for bank cards over 150 is restricted. Please use bank statements."
                         )
-                        continue
-                    status = 'pending'
-
-                comment = item.get('comment')
-                
-                # Check for income
-                income_triggers = ['доход', 'зарплата', 'подработка', 'премия', 'плюс', 'income', 'salary']
-                is_income = False
-                if category_id in [11, 12, 13]:
-                    is_income = True
-                elif any(word in item_name.split() for word in income_triggers):
-                    is_income = True
+                    else:
+                        responses.append(f"❌ Error: {save_res['error']} for '{item.get('original', text)}'")
+                    continue
                     
-                db_amount = abs(amount) if is_income else -abs(amount)
-                
-                # Save to DB
-                await cur.execute(
-                    """
-                    INSERT INTO transactions (user_id, account_id, category_id, amount, description, comment, date, source_type, status)
-                    VALUES (%s, %s, %s, %s, %s, %s, CURRENT_DATE, 'manual_text', %s)
-                    RETURNING id;
-                    """,
-                    (user_id, account_id, category_id, db_amount, item_name, comment, status)
-                )
-                res = await cur.fetchone()
-                if res:
-                    inserted_ids.append(str(res['id']))
-                
                 await conn.commit()
+                
+                if save_res.get("id"):
+                    inserted_ids.append(str(save_res["id"]))
+                    
+                db_amount = save_res["db_amount"]
+                status = save_res["status"]
+                
+                comment = item.get('comment')
+                item_name = item.get('item_name', '')
+                category_id = item.get('category_id')
                 
                 comment_text = f" ({comment})" if comment else ""
                 formatted_amount = f"{db_amount:+.2f} ₪"

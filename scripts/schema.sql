@@ -43,6 +43,6 @@ CREATE TABLE IF NOT EXISTS transactions (
     comment TEXT,
     date TIMESTAMP WITH TIME ZONE NOT NULL,
     external_id VARCHAR(255) UNIQUE, -- Hash to prevent duplicates during import
-    source_type VARCHAR(20) CHECK (source_type IN ('manual', 'import_xls', 'manual_text')),
+    source_type VARCHAR(20) CHECK (source_type IN ('manual', 'import_xls', 'manual_text', 'manual_voice')),
     status VARCHAR(20) DEFAULT 'confirmed' CHECK (status IN ('draft', 'pending', 'confirmed', 'adjustment'))
 );

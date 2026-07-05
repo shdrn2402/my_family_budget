@@ -38,7 +38,7 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         text = await transcribe_voice(audio_bytes)
         
         if not text:
-            await processing_msg.edit_text(get_text("database_error", lang)) # Generic error
+            await processing_msg.edit_text(get_text("llm_failed", lang)) # Transcription error
             return
             
         if text.startswith("__ERROR__:"):
@@ -64,73 +64,47 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
             
             total_sum = 0.0
             inserted_ids = []
-            async with conn.cursor() as cur:
-                for item in parsed_items:
-                    if 'error' in item:
-                        if item['error'] == 'llm_failed':
-                            responses.append(get_text("llm_failed", lang, details=item.get('details', '')))
-                        else:
-                            responses.append(get_text("item_parse_error", lang, original=item.get('original', text)))
-                        continue
-                        
-                    amount = item['amount']
-                    account_id = item['account_id']
-                    category_id = item['category_id']
-                    item_name = item['item_name']
+            from bot.services.expense import save_expense_item
+            for item in parsed_items:
+                if 'error' in item:
+                    if item['error'] == 'llm_failed':
+                        responses.append(get_text("llm_failed", lang, details=item.get('details', '')))
+                    else:
+                        responses.append(get_text("item_parse_error", lang, original=item.get('original', text)))
+                    continue
                     
-                    if not account_id:
-                        responses.append(get_text("account_not_found", lang, alias=item['account_alias'], original=item.get('original', text)))
-                        continue
-                    
-                    # Synchronized logic with text handler
-                    from bot.database import get_account_type
-                    account_type = await get_account_type(account_id, conn)
-                    status = 'confirmed'
-                    
-                    if account_type == 'card':
-                        if abs(amount) > 150:
-                            responses.append(
-                                "⚠️ Траты по картам свыше 150 ₪ вносятся только через загрузку выписки." if lang == 'ru'
-                                else "⚠️ Manual entry for bank cards over 150 is restricted. Please use bank statements."
-                            )
-                            continue
-                        status = 'pending'
-                        
-                    comment = item.get('comment')
-                    
-                    # Check for income
-                    income_triggers = ['доход', 'зарплата', 'подработка', 'премия', 'плюс', 'income', 'salary']
-                    is_income = False
-                    if category_id in [11, 12, 13]:
-                        is_income = True
-                    elif any(word in item_name.split() for word in income_triggers):
-                        is_income = True
-                        
-                    db_amount = abs(amount) if is_income else -abs(amount)
-                        
-                    await cur.execute(
-                        """
-                        INSERT INTO transactions (user_id, account_id, category_id, amount, description, comment, date, source_type, status)
-                        VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, 'manual_voice', %s)
-                        RETURNING id;
-                        """,
-                        (user_id, account_id, category_id, db_amount, item_name, comment, status)
-                    )
-                    
-                    row = await cur.fetchone()
-                    if row:
-                        inserted_ids.append(str(row['id']))
-                    
-                    total_sum += amount
-                    cat_status = get_text("category_found", lang) if category_id else get_text("category_not_found", lang)
-                    responses.append(get_text("expense_saved", lang, 
-                        item=item_name, 
-                        amount=f"{amount:.2f}", 
-                        account=item['account_alias'], 
-                        cat_status=cat_status
-                    ))
+                save_res = await save_expense_item(item, user_id, lang, conn, 'manual_voice')
                 
+                if "error" in save_res:
+                    if save_res["error"] == "account_not_found":
+                        responses.append(get_text("account_not_found", lang, alias=item.get('account_alias', ''), original=item.get('original', text)))
+                    elif save_res["error"] == "card_limit_exceeded":
+                        responses.append(
+                            "⚠️ Траты по картам свыше 150 ₪ вносятся только через загрузку выписки." if lang == 'ru'
+                            else "⚠️ Manual entry for bank cards over 150 is restricted. Please use bank statements."
+                        )
+                    else:
+                        responses.append(get_text("item_parse_error", lang, original=item.get('original', text)))
+                    continue
+                    
                 await conn.commit()
+                
+                if save_res.get("id"):
+                    inserted_ids.append(str(save_res["id"]))
+                
+                amount = item.get('amount', 0.0)
+                total_sum += amount
+                
+                category_id = item.get('category_id')
+                item_name = item.get('item_name', '')
+                
+                cat_status = get_text("category_found", lang) if category_id else get_text("category_not_found", lang)
+                responses.append(get_text("expense_saved", lang, 
+                    item=item_name, 
+                    amount=f"{amount:.2f}", 
+                    account=item.get('account_alias', ''), 
+                    cat_status=cat_status
+                ))
                 
             final_text = heard_text + "\n".join(responses)
             if total_sum > 0:

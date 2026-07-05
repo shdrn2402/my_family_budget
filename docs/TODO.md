@@ -24,11 +24,98 @@
 
 ---
 
-## 3. Аналитика и обработка естественного языка (LLM)
-**Цель:** Очистить проект от неработающих модулей (голосовой ввод) и переработать систему запросов.
+## 3. Рефакторинг LLM: Удаление мусора, голосовой ввод, аналитика
 
-- [ ] Удалить или переработать весь аналитический модуль.
-- [ ] Удалить или переработать всю обработку запросов на естественном языке (LLM).
+**Цель:** Удалить мёртвый и дублирующий код, связанный с LLM/аналитикой. Сохранить голосовой ввод и простую текстовую аналитику (без графиков), переписав их по архитектурным стандартам проекта.
+
+**Архитектурный контекст (прочитать перед выполнением):**
+- Графики (PNG) — удалить полностью. Визуализация — задача будущего веб-приложения.
+- Аналитика в боте: только текстовые ответы на вопросы (NL→SQL→текст). Никаких `matplotlib`.
+- Голосовой ввод: транскрипция через Gemini → передача текста в `expense_message_handler`. Дублирование бизнес-логики в `handlers/voice.py` должно быть устранено.
+- Все user-facing строки должны идти через `bot/texts.py`. Никаких hardcoded строк на русском/английском в handlers.
+- Все удалённые тесты должны быть пересозданы для новой реализации.
+
+---
+
+### Фаза A: Удаление мёртвого кода
+
+- [x] **A1.** Удалить файл `bot/services/router.py` — функция `classify_intent` нигде не вызывается, является мёртвым кодом.
+- [x] **A2.** Удалить файл `bot/services/charts.py` — графики PNG не нужны в боте.
+- [x] **A3.** Удалить директорию `bot/temp_plots/` (использовалась только для PNG-графиков).
+- [x] **A4.** Удалить файл `bot/handlers/analytics.py` — монолитный handler с NL→SQL→chart пайплайном.
+- [x] **A5.** Удалить файл `bot/handlers/expenses.py` (пустой legacy-файл, 0 байт).
+- [x] **A6.** Удалить файл `bot/handlers/import_xls.py` (пустой legacy-файл, 0 байт).
+- [x] **A7.** Удалить файл `bot/services/excel_parser.py` (пустой legacy-файл, 0 байт).
+- [x] **A8.** Удалить тесты для удалённого кода: `tests/test_analytics.py`, `tests/test_router.py`, `tests/test_charts.py`.
+- [x] **A9.** Из `bot/database.py` удалить функцию `execute_read_only_query`, если она используется **только** в `handlers/analytics.py`. Проверить перед удалением grep-ом.
+- [x] **A10.** В `bot/handlers/expense.py` удалить блок `# --- ANALYTICS ROUTING (Heuristic) ---` (строки с `question_keywords`, `is_question`, `analytics_handler`). Удалить импорт `from bot.handlers.analytics import analytics_handler`.
+
+---
+
+### Фаза B: Рефакторинг голосового ввода
+
+**Проблема:** `bot/handlers/voice.py` дублирует ~80 строк бизнес-логики из `bot/handlers/expense.py` (account type check, income check, INSERT в БД). Это нарушает принцип разделения ответственности.
+
+**Решение:** Бизнес-логику сохранения одного расхода вынести в `bot/services/expense.py`. Оба handler вызывают один и тот же сервис.
+
+- [x] **B1.** В `bot/services/expense.py` создать функцию `save_expense_item(item: dict, user_id: int, lang: str, conn) -> dict` со следующей сигнатурой:
+  - Принимает уже распарсенный `item` (с полями `item_name`, `amount`, `account_id`, `category_id`, `comment`), `user_id`, `lang`, `conn`.
+  - Выполняет: account type check → income sign correction → INSERT → возвращает `{"id": int, "db_amount": float, "status": str}` или `{"error": str}`.
+  - `source_type` передаётся как параметр (`'manual_text'` или `'manual_voice'`).
+  - Все тексты ошибок берутся из `bot/texts.py` через `get_text()`.
+  - income triggers должны быть вынесены в константу `INCOME_CATEGORY_IDS = {11, 12, 13}` и `INCOME_KEYWORDS` в начале файла, **не** в теле функции.
+
+- [x] **B2.** Рефакторинг `bot/handlers/expense.py`:
+  - Удалить дублирующий блок (account type check, income check, INSERT).
+  - Заменить на вызов `save_expense_item()` из `services/expense.py`.
+  - Handler должен остаться тонким: получить `parsed_items` → вызвать сервис → сформировать ответ.
+
+- [x] **B3.** Рефакторинг `bot/handlers/voice.py`:
+  - После транскрипции (`transcribe_voice`) — передать текст напрямую в `process_expense_text()`, затем вызвать `save_expense_item()`.
+  - Удалить весь дублирующий блок INSERT и проверок.
+  - Hardcoded строки (строки 93-95, 157 в исходном файле) заменить на `get_text()`.
+  - Конечный файл должен содержать не более ~60 строк.
+
+- [x] **B4.** Написать тест `tests/test_save_expense_item.py`:
+  - Тест `test_save_expense_cash_expense()`: проверяет, что INSERT вызывается с отрицательной суммой для расхода.
+  - Тест `test_save_expense_income()`: проверяет, что сумма положительная для income категории.
+  - Тест `test_save_expense_card_over_limit()`: проверяет, что возвращается `{"error": ...}` при сумме > 150 для card-счёта.
+  - Все тесты используют `AsyncMock` для `conn`, без реального подключения к БД.
+
+---
+
+### Фаза C: Рефакторинг аналитики (NL→SQL→текст)
+
+**Концепция:** Простая текстовая аналитика остаётся в боте. Формат: пользователь пишет вопрос (`?` в начале/конце или команда `/ask`) → бот отвечает текстом с цифрами. Графики — не реализуются.
+
+- [ ] **C1.** В `bot/services/llm.py` удалить функцию `generate_answer_from_data` в её текущем виде. Переписать: функция должна принимать `question: str`, `data_rows: list[dict]`, `lang: str` и возвращать только строку ответа. Добавить явный тип возврата `-> str`. Убрать hardcoded строку `"Ничего не нашел..."` → заменить на `get_text("analytics_no_data", lang)`.
+
+- [ ] **C2.** Создать файл `bot/handlers/query.py` — новый тонкий handler для аналитических запросов:
+  - Функция `query_handler(update, context)`.
+  - Логика: получить текст → вызвать `llm.translate_question_to_sql()` → выполнить запрос → вызвать `llm.generate_answer_from_data()` → отправить ответ.
+  - Никакого кода генерации графиков.
+  - Никаких hardcoded строк — только `get_text()`.
+
+- [ ] **C3.** В `bot/handlers/expense.py` восстановить минималистичный heuristic для определения аналитического запроса:
+  - Условие: текст начинается с `?` или оканчивается на `?`.
+  - Если да — вызвать `query_handler`. Убрать список `question_keywords` (хрупкий).
+
+- [ ] **C4.** Зарегистрировать `CommandHandler("ask", query_handler)` в `bot/main.py` как альтернативный способ задать вопрос.
+
+- [ ] **C5.** Удалить из `bot/services/llm.py` все комментарии и строки, относящиеся к удалённому `router.py` и `analytics.py`.
+
+- [ ] **C6.** Написать тест `tests/test_query_handler.py`:
+  - `test_query_handler_returns_text_answer()`: мокает `llm.translate_question_to_sql` и `llm.generate_answer_from_data`, проверяет, что handler отвечает текстом.
+  - `test_query_handler_blocks_unsafe_sql()`: проверяет, что при `is_safe=False` handler возвращает ошибку, не выполняя запрос.
+
+---
+
+### Финальная проверка
+
+- [ ] **F1.** Запустить `pytest` — все тесты должны быть зелёными.
+- [ ] **F2.** Убедиться, что `bot/main.py` не содержит импортов удалённых модулей (`analytics`, `router`, `charts`).
+- [ ] **F3.** Убедиться, что в кодовой базе нет прямых вызовов `matplotlib` и `httpx` вне `services/`.
+- [ ] **F4.** Сделать коммит: `refactor(llm): remove dead analytics code and deduplicate expense save logic`.
 
 ---
 
@@ -44,9 +131,9 @@
 ## 5. Импорт исторических наличных трат (Migration)
 **Цель:** Разработать и применить скрипт импорта исторических наличных трат из старой версии бота для наполнения аналитики.
 
-- [ ] Разработать скрипт миграции `scripts/import_historical_cash.py` для чтения `bank_statements/legacy_cash_transactions_2023_2025.csv`.
-- [ ] Отфильтровать транзакции, где `financing_source = 'Cash'` и дата меньше или равна `2025-05-27`.
-- [ ] Реализовать маппинг категорий из CSV-файла на структуру `seed_data.sql` (включая разбор размытых категорий `Personal expenses` и `Other` по ключевым словам в `purchase_name`).
-- [ ] Импортировать транзакции в таблицу `budget.transactions` со счетом `account_id = 4` (Общий сейф).
-- [ ] Добавить в скрипт защиту от дубликатов при повторном запуске.
-- [ ] Описать в инструкции процедуру сверки баланса «Общего сейфа» для компенсации пробела в наличных тратах (списание разницы на категорию 44 `Unaccounted Expenses`).
+- [x] Разработать скрипт миграции `scripts/import_historical_cash.py` для чтения `bank_statements/legacy_cash_transactions_2023_2025.csv`.
+- [x] Отфильтровать транзакции, где `financing_source = 'Cash'`.
+- [x] Реализовать маппинг категорий из CSV-файла на структуру `seed_data.sql` (включая разбор размытых категорий `Personal expenses` и `Other` по ключевым словам в `purchase_name`).
+- [x] Импортировать транзакции в таблицу `budget.transactions` со счетом `account_id = 4` (Общий сейф).
+- [x] Добавить в скрипт защиту от дубликатов при повторном запуске.
+- [x] Свести исторический баланс в ноль одной компенсирующей транзакцией (пополнение) на счет `account_id = 4` с категорией 43 (`Cash Withdrawal`).
