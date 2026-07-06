@@ -137,3 +137,25 @@
 - [x] Import transactions into the `budget.transactions` table under the account `account_id = 4` (Shared Cash).
 - [x] Add duplicate prevention logic to the script for safe re-runs.
 - [x] Reconcile the historical balance to zero with a single compensating transaction (top-up) on `account_id = 4` with category 43 (`Cash Withdrawal`).
+
+---
+
+## 6. Fix Bit Wallet Transfer and Transaction Logic
+**Goal:** Correct the tracking logic for "Bit" transactions to account for direct credit card withdrawals and fix the "account not found" error when manually selecting the Bit account.
+
+**Context & Issues:**
+- Transactions labeled `העברה ב BIT בנה"פ` (Transfer in BIT Bank Hapoalim) are currently incorrectly processed as internal transfers. These are often actual expenses or incomes directly linked to Andrey's credit card.
+- Bank statement entries involving Bit represent either a transfer from the Bit app to the card, or an expense paid from the card via Bit.
+- The current wallet transfer logic only handles scenarios where funds are received on Bit and kept on the Bit balance for future spending (bypassing the bank account). These direct Bit-to-Bit transactions are not tracked automatically (in or out) and rely entirely on manual entry.
+- Attempting to manually specify "Bit" as the account currently results in an "Account not found" error.
+
+**Tasks:**
+- [ ] Fix the alias and account resolution logic so that specifying "Bit" as an account during manual entry works correctly without raising an "Account not found" error.
+- [ ] Adjust the statement parsing logic so that `העברה ב BIT בנה"פ` is not automatically treated as a transit/internal transfer if it represents an actual expense or income on the credit card.
+- [ ] Design and implement a workflow to properly track direct Bit-to-Bit balance transactions (money received and subsequently spent directly from the Bit wallet) to avoid untracked financial movements.
+
+**Alternative Proposed Architecture (To be discussed):**
+Instead of maintaining separate transit accounts for Bit/Paybox, consider completely eliminating them from the system:
+- **Card Transactions:** Treat any `העברה ב BIT בנה"פ` directly as a regular card expense or income. If it's a negative amount, it's just an expense from the credit card that needs categorization.
+- **Bit Balance (Electronic Cash):** Treat funds kept on the Bit balance as identical to physical Cash. A transfer received on Bit (not withdrawn) is recorded manually as "Income to Cash". A direct payment from the Bit balance is recorded manually as "Expense from Cash".
+- **Action Items if adopted:** Delete Bit/Paybox aliases, remove the "transit" check in statement parsing, and simplify manual entry logic to only use Card or Cash.
