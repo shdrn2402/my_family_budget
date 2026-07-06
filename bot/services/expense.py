@@ -5,6 +5,7 @@ from psycopg.rows import dict_row
 from bot.services.llm import parse_natural_language
 from bot.database import get_account_type
 from bot.texts import get_text
+from datetime import date, timedelta
 
 INCOME_CATEGORY_IDS = {11, 12, 13}
 INCOME_KEYWORDS = ['доход', 'зарплата', 'подработка', 'премия', 'плюс', 'income', 'salary']
@@ -25,6 +26,22 @@ async def parse_expense_message(text: str, user_id: int, conn: psycopg.AsyncConn
             continue
             
         words: List[str] = part.split()
+        
+        tx_date = None
+        words_lower = [w.lower() for w in words]
+        
+        if 'вчера' in words_lower or 'yesterday' in words_lower:
+            tx_date = (date.today() - timedelta(days=1)).isoformat()
+            target_word = 'вчера' if 'вчера' in words_lower else 'yesterday'
+            words.pop(words_lower.index(target_word))
+        elif 'позавчера' in words_lower:
+            tx_date = (date.today() - timedelta(days=2)).isoformat()
+            words.pop(words_lower.index('позавчера'))
+        elif 'сегодня' in words_lower or 'today' in words_lower:
+            tx_date = date.today().isoformat()
+            target_word = 'сегодня' if 'сегодня' in words_lower else 'today'
+            words.pop(words_lower.index(target_word))
+
         if len(words) < 2:
             results.append({'original': part, 'error': 'not_enough_words'})
             continue
@@ -73,7 +90,8 @@ async def parse_expense_message(text: str, user_id: int, conn: psycopg.AsyncConn
             'account_id': account_id,
             'account_alias': account_alias,
             'category_id': category_id,
-            'comment': comment
+            'comment': comment,
+            'date': tx_date
         })
         
     return results
