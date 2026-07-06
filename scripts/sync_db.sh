@@ -1,14 +1,17 @@
 #!/bin/bash
-# Синхронизация локальной базы данных с продакшен-сервером
-# Использовать только для локальной разработки!
+# Sync local database with production server
+# Use only for local development!
 
-echo "Остановка локальных контейнеров и удаление старой БД..."
+echo "Stopping local containers and removing old DB volume..."
 docker compose down -v
 
-echo "Скачивание актуальных бэкапов с сервера..."
+echo "Fixing permissions for backups folder..."
+sudo chown -R $USER:$USER ./backups/
+
+echo "Downloading latest backups from server..."
 scp root@167.172.33.210:~/my_family_budget/backups/* ./backups/
 
-echo "Запуск локальных контейнеров (бот автоматически восстановит базу из нового бэкапа)..."
-docker compose up -d
+# echo "Starting local containers (bot will automatically restore DB from the new backup)..."
+# docker compose up -d
 
-echo "Готово! Локальная база синхронизирована с сервером."
+echo "Done! Local database is synced with the server."
