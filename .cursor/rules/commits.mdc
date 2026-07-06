@@ -6,6 +6,7 @@
 1. **Language:** All commit messages MUST be written in **English**. No exceptions.
 2. **Format:** You MUST follow the [Conventional Commits](https://www.conventionalcommits.org/) specification.
 3. **Structure:** `<type>[optional scope]: <description>`
+4. **CI Skipping:** Commits that do not affect the bot's production logic (e.g., changes to TODO files, documentation, or other non-code files) MUST include the `[skip ci]` tag in the commit message to prevent unnecessary CI pipeline runs.
 
 ## Allowed Commit Types (Tags)
 *   **`feat:`** – A new feature or functionality (e.g., `feat: add telegram bot start handler`).
@@ -25,3 +26,4 @@
 *   `chore: initialize bot directory structure and config files`
 *   `feat(db): implement categories synchronization`
 *   `fix: correct parsing logic for date columns in excel`
+*   `docs: update TODO with bit wallet tracking task [skip ci]`
