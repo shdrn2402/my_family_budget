@@ -152,18 +152,17 @@ async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg
         
         async with connection.cursor() as cur:
             for tx in transactions:
-                # Try to find a matching pending manual transaction
+                # Try to find a matching pending manual transaction (ignoring account_id)
                 await cur.execute(
                     """
                     SELECT id FROM transactions 
-                    WHERE account_id = %s 
-                      AND amount = %s 
+                    WHERE amount = %s 
                       AND status = 'pending' 
                       AND date BETWEEN %s::date - INTERVAL '3 days' AND %s::date + INTERVAL '3 days'
                     LIMIT 1
                     FOR UPDATE SKIP LOCKED;
                     """,
-                    (tx['account_id'], tx['amount'], tx['date'], tx['date'])
+                    (tx['amount'], tx['date'], tx['date'])
                 )
                 match = await cur.fetchone()
 
@@ -176,6 +175,7 @@ async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg
                             external_id = %s, 
                             date = %s, 
                             source_type = 'import_xls',
+                            account_id = %s,
                             comment = CASE 
                                         WHEN comment IS NOT NULL AND comment != '' THEN description || ', ' || comment 
                                         ELSE description 
@@ -183,7 +183,7 @@ async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg
                             description = %s
                         WHERE id = %s;
                         """,
-                        (tx['external_id'], tx['date'], tx['description'], match['id'])
+                        (tx['external_id'], tx['date'], tx['account_id'], tx['description'], match['id'])
                     )
                     inserted_count += 1
                 else:

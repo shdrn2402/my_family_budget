@@ -215,12 +215,11 @@ async def save_expense_item(item: dict, user_id: int, lang: str, conn: psycopg.A
         return {"error": "account_not_found"}
         
     account_type = await get_account_type(account_id, conn)
-    status = 'confirmed'
+    status = 'confirmed' if account_type == 'cash' else 'pending'
     
     if account_type == 'card':
         if abs(amount) > 150:
             return {"error": "card_limit_exceeded"}
-        status = 'pending'
         
     is_income = False
     if category_id in INCOME_CATEGORY_IDS:
