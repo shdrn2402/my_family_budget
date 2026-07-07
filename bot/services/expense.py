@@ -70,6 +70,20 @@ async def parse_expense_message(text: str, user_id: int, conn: psycopg.AsyncConn
             item_name: str = words[0].lower()
 
         comment: Optional[str] = " ".join(words[amount_idx + 1:]) if amount_idx < len(words) - 1 else None
+        if comment:
+            ignored_currencies = {
+                'шекелей', 'шекеля', 'шекель', 'шек', 'shekels', 'shekel', 'nis', 'ils', '₪',
+                'рублей', 'рубля', 'рубль', 'руб', 'rubles', 'ruble', 'rub',
+                'долларов', 'доллара', 'доллар', 'dollars', 'dollar', 'usd', '$',
+                'евро', 'euros', 'euro', 'eur', '€'
+            }
+            comment_words = comment.split()
+            filtered_comment_words = []
+            for w in comment_words:
+                clean_w = w.lower().strip('.,!?;:')
+                if clean_w not in ignored_currencies:
+                    filtered_comment_words.append(w)
+            comment = " ".join(filtered_comment_words) if filtered_comment_words else None
         
         # 4. Resolve Account ID
         account_id: Optional[int] = await resolve_account(account_alias, user_id, conn) if account_alias else None
