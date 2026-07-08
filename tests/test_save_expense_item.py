@@ -1,6 +1,8 @@
 import pytest
+from datetime import date
 from unittest.mock import AsyncMock, patch, MagicMock
 from bot.services.expense import save_expense_item
+
 
 @pytest.mark.asyncio
 async def test_save_expense_cash_expense():
@@ -25,19 +27,24 @@ async def test_save_expense_cash_expense():
         
         # Mock get_text to just return the key for simplicity in assertions
         with patch('bot.services.expense.get_text', side_effect=lambda key, lang, **kwargs: key):
-            # Mock the fetchone to return a dummy ID
-            mock_cursor.fetchone.return_value = {'id': 100}
-            
-            result = await save_expense_item(item, 12345, 'en', mock_conn, 'manual_text')
-            
-            assert 'error' not in result
-            assert result['id'] == 100
-            assert result['db_amount'] == -15.0  # Should be negative
-            assert result['status'] == 'confirmed'
-            
-            # Verify that execute was called with correct db_amount
-            args, kwargs = mock_cursor.execute.call_args
-            assert args[1][3] == -15.0
+            # Mock get_local_date to return a fixed date
+            with patch('bot.services.expense.get_local_date') as mock_get_local_date:
+                mock_get_local_date.return_value = date(2026, 7, 8)
+                # Mock the fetchone to return a dummy ID
+                mock_cursor.fetchone.return_value = {'id': 100}
+                
+                result = await save_expense_item(item, 12345, 'en', mock_conn, 'manual_text')
+                
+                assert 'error' not in result
+                assert result['id'] == 100
+                assert result['db_amount'] == -15.0  # Should be negative
+                assert result['status'] == 'confirmed'
+                
+                # Verify that execute was called with correct db_amount and date
+                args, kwargs = mock_cursor.execute.call_args
+                assert args[1][3] == -15.0
+                assert args[1][6] == "2026-07-08"  # Should use get_local_date
+
 
 @pytest.mark.asyncio
 async def test_save_expense_income():

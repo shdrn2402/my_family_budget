@@ -14,20 +14,23 @@ async def test_parse_expense_dates():
         mock_resolve_account.return_value = 1
         with patch('bot.services.expense.resolve_category_from_alias', new_callable=AsyncMock) as mock_resolve_category:
             mock_resolve_category.return_value = 1
-            
-            # Test "вчера"
-            results = await parse_expense_message("кофе вчера 15", 12345, mock_conn)
-            assert len(results) == 1
-            assert results[0]['item_name'] == "кофе"
-            assert results[0]['amount'] == 15.0
-            assert results[0].get('date') == (date.today() - timedelta(days=1)).isoformat()
-            
-            # Test "today"
-            results = await parse_expense_message("taxi today 50", 12345, mock_conn)
-            assert len(results) == 1
-            assert results[0]['item_name'] == "taxi"
-            assert results[0]['amount'] == 50.0
-            assert results[0].get('date') == date.today().isoformat()
+            with patch('bot.services.expense.get_local_date') as mock_get_local_date:
+                mock_get_local_date.return_value = date(2026, 7, 8)
+                
+                # Test "вчера"
+                results = await parse_expense_message("кофе вчера 15", 12345, mock_conn)
+                assert len(results) == 1
+                assert results[0]['item_name'] == "кофе"
+                assert results[0]['amount'] == 15.0
+                assert results[0].get('date') == "2026-07-07"
+                
+                # Test "today"
+                results = await parse_expense_message("taxi today 50", 12345, mock_conn)
+                assert len(results) == 1
+                assert results[0]['item_name'] == "taxi"
+                assert results[0]['amount'] == 50.0
+                assert results[0].get('date') == "2026-07-08"
+
 
 @pytest.mark.asyncio
 async def test_parse_expense_currency_comment():

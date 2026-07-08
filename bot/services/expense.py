@@ -5,7 +5,15 @@ from psycopg.rows import dict_row
 from bot.services.llm import parse_natural_language
 from bot.database import get_account_type
 from bot.texts import get_text
-from datetime import date, timedelta
+import zoneinfo
+from datetime import datetime, date, timedelta
+from bot.config import Config
+
+def get_local_date() -> date:
+    """Returns the current date in the configured local timezone."""
+    tz = zoneinfo.ZoneInfo(Config.BOT_TIMEZONE)
+    return datetime.now(tz).date()
+
 
 INCOME_CATEGORY_IDS = {11, 12, 13}
 INCOME_KEYWORDS = ['доход', 'зарплата', 'подработка', 'премия', 'плюс', 'income', 'salary']
@@ -31,14 +39,14 @@ async def parse_expense_message(text: str, user_id: int, conn: psycopg.AsyncConn
         words_lower = [w.lower() for w in words]
         
         if 'вчера' in words_lower or 'yesterday' in words_lower:
-            tx_date = (date.today() - timedelta(days=1)).isoformat()
+            tx_date = (get_local_date() - timedelta(days=1)).isoformat()
             target_word = 'вчера' if 'вчера' in words_lower else 'yesterday'
             words.pop(words_lower.index(target_word))
         elif 'позавчера' in words_lower:
-            tx_date = (date.today() - timedelta(days=2)).isoformat()
+            tx_date = (get_local_date() - timedelta(days=2)).isoformat()
             words.pop(words_lower.index('позавчера'))
         elif 'сегодня' in words_lower or 'today' in words_lower:
-            tx_date = date.today().isoformat()
+            tx_date = get_local_date().isoformat()
             target_word = 'сегодня' if 'сегодня' in words_lower else 'today'
             words.pop(words_lower.index(target_word))
 
@@ -229,19 +237,15 @@ async def save_expense_item(item: dict, user_id: int, lang: str, conn: psycopg.A
         
     db_amount = abs(amount) if is_income else -abs(amount)
     
-    tx_date = item.get('date')
-    date_field = "CURRENT_DATE" if not tx_date else "%s::date"
+    tx_date = item.get('date') or get_local_date().isoformat()
     
-    query = f"""
+    query = """
         INSERT INTO transactions (user_id, account_id, category_id, amount, description, comment, date, source_type, status)
-        VALUES (%s, %s, %s, %s, %s, %s, {date_field}, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s::date, %s, %s)
         RETURNING id;
     """
     
-    params = [user_id, account_id, category_id, db_amount, item_name, comment]
-    if tx_date:
-        params.append(tx_date)
-    params.extend([source_type, status])
+    params = [user_id, account_id, category_id, db_amount, item_name, comment, tx_date, source_type, status]
     
     async with conn.cursor() as cur:
         await cur.execute(query, tuple(params))

@@ -22,3 +22,7 @@ class Config:
 
     # LLM APIs
     GEMINI_API_KEY: str | None = os.getenv("GEMINI_API_KEY")
+
+    # Timezone Configuration
+    BOT_TIMEZONE: str = os.getenv("BOT_TIMEZONE", "UTC")
+
