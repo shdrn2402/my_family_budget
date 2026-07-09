@@ -160,5 +160,85 @@ def import_excel_file(file_path, hint=None):
         target_account_id = mapping.get(prefix, 1) # Default to Andrey Credit if unknown
         return parse_isracard(file_path, account_id=target_account_id)
         
+    # Bit CSV pattern
+    if 'bit' in search_text and search_text.endswith('.csv'):
+        # Usually we would prompt for who's Bit it is, but here we pass target_account_id from caller (or default)
+        return parse_bit_csv(file_path, account_id=1) # The real caller (handler) should pass the correct account_id
+        
     logger.warning(f"Unknown file format: {filename} (hint: {hint})")
     return []
+
+def parse_bit_csv(file_path, account_id):
+    """
+    Parses Bit CSV format.
+    Columns: Status, Description, Fee Amount, Amount, Payment Method, Credit/Debit, From/To, Date
+    """
+    try:
+        df = pd.read_csv(file_path)
+    except Exception as e:
+        logger.error(f"Error reading Bit CSV: {e}")
+        return []
+        
+    transactions = []
+    
+    for _, row in df.iterrows():
+        status = str(row.get('Status', '')).strip()
+        if status.lower() != 'done':
+            continue
+            
+        desc = str(row.get('Description', '')).strip()
+        from_to = str(row.get('From/To', '')).strip()
+        payment_method = str(row.get('Payment Method', '')).strip()
+        credit_debit = str(row.get('Credit/Debit', '')).strip()
+        
+        try:
+            amount_val = float(str(row.get('Amount', '0')).replace(',', ''))
+        except ValueError:
+            continue
+            
+        if amount_val == 0:
+            continue
+            
+        # Parse date (format is typically DD.MM.YY)
+        raw_date = row.get('Date')
+        try:
+            if isinstance(raw_date, datetime):
+                date_obj = raw_date
+            else:
+                date_obj = datetime.strptime(str(raw_date).strip().strip(','), '%d.%m.%y')
+        except Exception as e:
+            logger.warning(f"Could not parse Bit date: {raw_date}")
+            continue
+            
+        # Determine account and sign based on rules:
+        if payment_method == 'חשבון בנק':
+            # Withdrawal to bank account (from Transit)
+            target_account = 5 # Transit (Bit/Paybox)
+            amount = -abs(amount_val) # Expense from transit
+        elif payment_method == 'כרטיס אשראי':
+            # Expense from credit card
+            target_account = account_id
+            amount = -abs(amount_val)
+        elif payment_method == 'יתרה':
+            # Transit balance change
+            target_account = 5
+            if credit_debit.lower() == 'credit':
+                amount = abs(amount_val)
+            else:
+                amount = -abs(amount_val)
+        else:
+            logger.warning(f"Unknown payment method in Bit CSV: {payment_method}")
+            continue
+            
+        transactions.append({
+            'date': date_obj,
+            'amount': amount,
+            'description': desc,
+            'comment': from_to,
+            'external_id': f"bit_{date_obj.strftime('%Y%m%d')}_{target_account}_{amount}_{from_to}",
+            'account_id': target_account,
+            'source_type': 'import_bit',
+            'status': 'confirmed'
+        })
+        
+    return transactions

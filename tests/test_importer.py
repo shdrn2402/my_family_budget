@@ -2,7 +2,7 @@ import pytest
 import pandas as pd
 from datetime import datetime
 from unittest.mock import patch
-from bot.services.importer import parse_leumi, parse_isracard, import_excel_file
+from bot.services.importer import parse_leumi, parse_isracard, import_excel_file, parse_bit_csv
 
 def test_parse_leumi_success():
     """Test standard Bank Leumi statement parsing, checking that Isracard entries are ignored."""
@@ -73,6 +73,50 @@ def test_parse_isracard_success():
         assert transactions[2]['description'] == 'Netflix'
         assert transactions[2]['amount'] == -38.0 # Should use 'סכום חיוב' (charge amount in local currency)
 
+def test_parse_bit_csv_success():
+    """Test parsing of Bit CSV format."""
+    # Columns: Status, Description, Fee Amount, Amount, Payment Method, Credit/Debit, From/To, Date
+    data = {
+        'Status': ['Done', 'Done', 'Done', 'Expired', 'Done'],
+        'Description': ['Withdrawal to bank account', 'העברת כספים bit', 'העברת כספים bit', 'העברת כספים bit', 'העברת כספים bit'],
+        'Fee Amount': [0, 0, 0, 0, 0],
+        'Amount': [300, 50, 540, 9, 200],
+        'Payment Method': ['חשבון בנק', 'יתרה', 'כרטיס אשראי', 'יתרה', 'יתרה'],
+        'Credit/Debit': ['Credit', 'Credit', 'Debit', 'Debit', 'Debit'],
+        'From/To': ['אנדריי שדרין', 'אלבינה קושניר', 'אלה בילמוס', 'לב פיין', 'someone'],
+        'Date': ['30.01.26', '26.05.26', '16.04.26', '01.06.26', '12.06.26']
+    }
+    mock_df = pd.DataFrame(data)
+    
+    with patch('pandas.read_csv', return_value=mock_df):
+        transactions = parse_bit_csv("bit_transactions_2026.csv", account_id=1) # Account id for credit card fallback
+        
+        # Expired should be ignored
+        assert len(transactions) == 4
+        
+        # 1. Withdrawal to bank account
+        assert transactions[0]['description'] == 'Withdrawal to bank account'
+        assert transactions[0]['comment'] == 'אנדריי שדרין'
+        assert transactions[0]['amount'] == -300.0 # From Transit to Bank means an expense on Transit
+        assert transactions[0]['account_id'] == 5 # Transit
+        assert transactions[0]['status'] == 'confirmed'
+        assert transactions[0]['source_type'] == 'import_bit'
+        
+        # 2. Receipt to balance (יתרה, Credit)
+        assert transactions[1]['description'] == 'העברת כספים bit'
+        assert transactions[1]['comment'] == 'אלבינה קושניר'
+        assert transactions[1]['amount'] == 50.0
+        assert transactions[1]['account_id'] == 5 # Transit
+        
+        # 3. Expense from Credit Card
+        assert transactions[2]['description'] == 'העברת כספים bit'
+        assert transactions[2]['amount'] == -540.0
+        assert transactions[2]['account_id'] == 1 # Passed as argument
+        
+        # 4. Expense from Balance (יתרה, Debit)
+        assert transactions[3]['amount'] == -200.0
+        assert transactions[3]['account_id'] == 5 # Transit
+
 def test_import_excel_file_routing():
     """Test that the main router correctly identifies file types based on new patterns."""
     with patch('bot.services.importer.parse_leumi') as mock_leumi, \
@@ -94,3 +138,7 @@ def test_import_excel_file_routing():
         # Test Isracard (starts with 6747 - Wife)
         import_excel_file("6747_wife_report.xlsx")
         mock_isra.assert_called_with("6747_wife_report.xlsx", account_id=2)
+
+    with patch('bot.services.importer.parse_bit_csv') as mock_bit:
+        import_excel_file("bit_transactions_2026.csv")
+        mock_bit.assert_called_with("bit_transactions_2026.csv", account_id=1)
