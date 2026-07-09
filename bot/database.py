@@ -152,12 +152,12 @@ async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg
         
         async with connection.cursor() as cur:
             for tx in transactions:
-                # Try to find a matching pending manual transaction (ignoring account_id)
+                # Try to find a matching pending manual transaction OR an import_bit transaction (ignoring account_id)
                 await cur.execute(
                     """
-                    SELECT id FROM transactions 
+                    SELECT id, source_type FROM transactions 
                     WHERE amount = %s 
-                      AND status = 'pending' 
+                      AND (status = 'pending' OR source_type = 'import_bit')
                       AND date BETWEEN %s::date - INTERVAL '3 days' AND %s::date + INTERVAL '3 days'
                     LIMIT 1
                     FOR UPDATE SKIP LOCKED;
@@ -167,24 +167,40 @@ async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg
                 match = await cur.fetchone()
 
                 if match:
-                    # Match found! Update the pending transaction instead of inserting a new one
-                    await cur.execute(
-                        """
-                        UPDATE transactions 
-                        SET status = 'confirmed', 
-                            external_id = %s, 
-                            date = %s, 
-                            source_type = 'import_xls',
-                            account_id = %s,
-                            comment = CASE 
-                                        WHEN comment IS NOT NULL AND comment != '' THEN description || ', ' || comment 
-                                        ELSE description 
-                                      END,
-                            description = %s
-                        WHERE id = %s;
-                        """,
-                        (tx['external_id'], tx['date'], tx['account_id'], tx['description'], match['id'])
-                    )
+                    if match['source_type'] == 'import_bit':
+                        # Match found with Bit CSV! It's the source of truth for account, description, category.
+                        # We only attach the bank's external_id to prevent duplicates and append bank description to comment.
+                        await cur.execute(
+                            """
+                            UPDATE transactions 
+                            SET external_id = %s,
+                                comment = CASE 
+                                            WHEN comment IS NOT NULL AND comment != '' THEN comment || ', ' || %s 
+                                            ELSE %s 
+                                          END
+                            WHERE id = %s;
+                            """,
+                            (tx['external_id'], tx['description'], tx['description'], match['id'])
+                        )
+                    else:
+                        # Match found with manual pending! Update with bank details.
+                        await cur.execute(
+                            """
+                            UPDATE transactions 
+                            SET status = 'confirmed', 
+                                external_id = %s, 
+                                date = %s, 
+                                source_type = 'import_xls',
+                                account_id = %s,
+                                comment = CASE 
+                                            WHEN comment IS NOT NULL AND comment != '' THEN description || ', ' || comment 
+                                            ELSE description 
+                                          END,
+                                description = %s
+                            WHERE id = %s;
+                            """,
+                            (tx['external_id'], tx['date'], tx['account_id'], tx['description'], match['id'])
+                        )
                     inserted_count += 1
                 else:
                     # No match, insert as new
@@ -217,10 +233,10 @@ async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg
         logger.error(f"Database error in bulk save for user {user_id}: {e}")
         return 0
 
-async def sync_category_by_alias(description_pattern, category_id, user_id, conn=None):
+async def sync_category_by_alias(alias_name, category_id, user_id, conn=None):
     """
-    1. Adds/updates an alias in item_aliases.
-    2. Updates all transactions with matching description and NULL category.
+    1. Adds/updates an alias in item_aliases (using composite alias_name).
+    2. Updates all transactions with matching description+comment and NULL category.
     """
     connection = conn if conn else await get_db_connection()
     try:
@@ -230,16 +246,20 @@ async def sync_category_by_alias(description_pattern, category_id, user_id, conn
                 INSERT INTO item_aliases (name, category_id)
                 VALUES (%s, %s)
                 ON CONFLICT (name) DO UPDATE SET category_id = EXCLUDED.category_id;
-            """, (description_pattern.lower().strip(), category_id))
+            """, (alias_name.lower().strip(), category_id))
             
             # 2. Bulk update transactions
+            # We match where the composite of description and comment ILIKE the alias_name
             await cur.execute("""
                 UPDATE transactions
                 SET category_id = %s
                 WHERE user_id = %s 
                   AND category_id IS NULL
-                  AND description ILIKE %s;
-            """, (category_id, user_id, f"%{description_pattern}%"))
+                  AND (
+                      description ILIKE %s OR 
+                      (description || ' ' || COALESCE(comment, '')) ILIKE %s
+                  );
+            """, (category_id, user_id, f"%{alias_name}%", f"%{alias_name}%"))
             
             updated_count = cur.rowcount
             await connection.commit()

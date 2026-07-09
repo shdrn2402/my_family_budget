@@ -21,6 +21,7 @@ class MockCursor:
     def __init__(self, exists_val=False):
         self.exists_val = exists_val
         self.execute_calls = []
+        self.rowcount = 1
         
     async def __aenter__(self):
         return self
@@ -116,3 +117,50 @@ async def test_init_db_fallback_to_schema():
         assert mock_file.call_count >= 2
 
 
+@pytest.mark.asyncio
+async def test_save_transactions_bulk_reconciliation():
+    """Test that save_transactions_bulk reconciles with both pending and import_bit statuses."""
+    from bot.database import save_transactions_bulk
+    
+    test_conn = MockConnection()
+    # We mock fetchone to return a match indicating it found a transaction (e.g. from Bit)
+    test_conn.cursor_obj.fetchone = AsyncMock(return_value={'id': 42, 'source_type': 'import_bit'})
+    
+    test_txs = [{
+        'amount': -100.0,
+        'date': '2026-05-15',
+        'external_id': 'bank_123',
+        'account_id': 1,
+        'description': 'העברה בBIT',
+        'category_id': None
+    }]
+    
+    with patch("bot.database.get_db_connection", return_value=test_conn):
+        inserted = await save_transactions_bulk(999, test_txs)
+        
+    assert inserted == 1
+    # Check that SELECT checked for both pending and import_bit
+    select_query = test_conn.cursor_obj.execute_calls[0][0]
+    assert "(status = 'pending' OR source_type = 'import_bit')" in select_query, "Must search for import_bit as well as pending"
+    
+    # Check that UPDATE statement updates external_id but DOES NOT overwrite category_id
+    update_query = test_conn.cursor_obj.execute_calls[1][0]
+    assert "category_id =" not in update_query, "Category ID must be preserved during reconciliation"
+    assert "account_id =" not in update_query, "Account ID must be preserved from the Bit import"
+    assert "description =" not in update_query, "Description must be preserved from the Bit import"
+
+@pytest.mark.asyncio
+async def test_sync_category_by_alias_composite():
+    """Test that sync_category_by_alias handles composite aliases."""
+    from bot.database import sync_category_by_alias
+    
+    test_conn = MockConnection()
+    
+    with patch("bot.database.get_db_connection", return_value=test_conn):
+        await sync_category_by_alias("manicure + albina", 15, 999)
+        
+    # Check that it uses the exact composite string for the alias insert
+    insert_query = test_conn.cursor_obj.execute_calls[0][0]
+    insert_params = test_conn.cursor_obj.execute_calls[0][1]
+    assert "INSERT INTO item_aliases" in insert_query
+    assert insert_params[0] == "manicure + albina", "Must insert the composite alias"

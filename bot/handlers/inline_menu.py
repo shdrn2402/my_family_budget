@@ -187,19 +187,30 @@ async def inline_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         elif data.startswith("save_cat:"):
             _, tx_id, cat_id, tx_ids_str, page = data.split(":")
             lang = user_lang or "ru"
+            from bot.database import sync_category_by_alias
+            
             async with await get_db_connection() as conn:
                 async with conn.cursor(row_factory=dict_row) as cur:
                     cat_id_int = int(cat_id)
-                    await cur.execute("SELECT amount FROM transactions WHERE id = %s", (tx_id,))
+                    await cur.execute("SELECT amount, description, comment, user_id FROM transactions WHERE id = %s", (tx_id,))
                     row = await cur.fetchone()
                     if row:
                         current_amount = row['amount']
+                        tx_user_id = row['user_id']
+                        description = row['description'] or ""
+                        comment = row['comment'] or ""
+                        
+                        # Generate composite alias string
+                        alias_name = f"{description} {comment}".strip()
+                        
                         new_amount = abs(current_amount) if cat_id_int in [11, 12, 13] else -abs(current_amount)
                         await cur.execute("UPDATE transactions SET category_id = %s, amount = %s WHERE id = %s", (cat_id_int, new_amount, tx_id))
                         
-
-
                 await conn.commit()
+                
+                # Sync aliases out of the cursor block
+                if row and alias_name:
+                    await sync_category_by_alias(alias_name, cat_id_int, tx_user_id, conn)
             
             confirm_text = get_text("category_saved", lang)
             await context.bot.send_message(chat_id=update.effective_chat.id, text=confirm_text)
