@@ -33,7 +33,7 @@ def generate_csv():
     # Sort by date
     all_transactions.sort(key=lambda x: x['date'])
     
-    output_path = os.path.join(base_dir, 'bank_statements', 'historical_bit_to_import.csv')
+    output_path = os.path.join(base_dir, 'bank_statements', 'legacy_bit_transactions_2024_2026.csv')
     
     with open(output_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
