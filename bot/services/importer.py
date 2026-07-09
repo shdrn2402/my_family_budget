@@ -174,7 +174,7 @@ def parse_bit_csv(file_path, account_id):
     Columns: Status, Description, Fee Amount, Amount, Payment Method, Credit/Debit, From/To, Date
     """
     try:
-        df = pd.read_csv(file_path)
+        df = pd.read_csv(file_path, on_bad_lines='skip', skipinitialspace=True, index_col=False)
     except Exception as e:
         logger.error(f"Error reading Bit CSV: {e}")
         return []
