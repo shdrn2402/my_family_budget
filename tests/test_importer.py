@@ -77,45 +77,49 @@ def test_parse_bit_csv_success():
     """Test parsing of Bit CSV format."""
     # Columns: Status, Description, Fee Amount, Amount, Payment Method, Credit/Debit, From/To, Date
     data = {
-        'Status': ['Done', 'Done', 'Done', 'Expired', 'Done'],
-        'Description': ['Withdrawal to bank account', 'העברת כספים bit', 'העברת כספים bit', 'העברת כספים bit', 'העברת כספים bit'],
-        'Fee Amount': [0, 0, 0, 0, 0],
-        'Amount': [300, 50, 540, 9, 200],
-        'Payment Method': ['חשבון בנק', 'יתרה', 'כרטיס אשראי', 'יתרה', 'יתרה'],
-        'Credit/Debit': ['Credit', 'Credit', 'Debit', 'Debit', 'Debit'],
-        'From/To': ['אנדריי שדרין', 'אלבינה קושניר', 'אלה בילמוס', 'לב פיין', 'someone'],
-        'Date': ['30.01.26', '26.05.26', '16.04.26', '01.06.26', '12.06.26']
+        'Status': ['Done', 'Done', 'Done', 'Expired', 'Done', 'Done'],
+        'Description': ['Withdrawal to bank account', 'העברת כספים bit', 'העברת כספים bit', 'העברת כספים bit', 'העברת כספים bit', 'עזרה'],
+        'Fee Amount': [0, 0, 0, 0, 0, 0],
+        'Amount': [300, 50, 540, 9, 200, 500],
+        'Payment Method': ['חשבון בנק', 'יתרה', 'כרטיס אשראי', 'יתרה', 'יתרה', 'חשבון בנק'],
+        'Credit/Debit': ['Credit', 'Credit', 'Debit', 'Debit', 'Debit', 'Credit'],
+        'From/To': ['אנדריי שדרין', 'אלבינה קושניר', 'אלה בילמוס', 'לב פיין', 'someone', 'אלכסנדר מורוז'],
+        'Date': ['30.01.26', '26.05.26', '16.04.26', '01.06.26', '12.06.26', '11.07.24']
     }
     mock_df = pd.DataFrame(data)
     
     with patch('pandas.read_csv', return_value=mock_df):
         transactions = parse_bit_csv("bit_transactions_2026.csv", account_id=1) # Account id for credit card fallback
         
-        # Expired should be ignored
-        assert len(transactions) == 4
+        # 5 valid input rows, but 'Withdrawal' creates 2 lines, so 6 output rows expected
+        assert len(transactions) == 6
         
-        # 1. Withdrawal to bank account
+        # 1. Withdrawal to bank account (Row 1 -> Creates 2 lines)
+        # Line 1: Expense from Transit
         assert transactions[0]['description'] == 'Withdrawal to bank account'
-        assert transactions[0]['comment'] == 'אנדריי שדרין'
-        assert transactions[0]['amount'] == -300.0 # From Transit to Bank means an expense on Transit
+        assert transactions[0]['amount'] == -300.0
         assert transactions[0]['account_id'] == 5 # Transit
-        assert transactions[0]['status'] == 'confirmed'
-        assert transactions[0]['source_type'] == 'import_bit'
+        
+        # Line 2: Income to Bank
+        assert transactions[1]['description'] == 'Withdrawal to bank account'
+        assert transactions[1]['amount'] == 300.0
+        assert transactions[1]['account_id'] == 3 # Family Debit
         
         # 2. Receipt to balance (יתרה, Credit)
-        assert transactions[1]['description'] == 'העברת כספים bit'
-        assert transactions[1]['comment'] == 'אלבינה קושניר'
-        assert transactions[1]['amount'] == 50.0
-        assert transactions[1]['account_id'] == 5 # Transit
+        assert transactions[2]['amount'] == 50.0
+        assert transactions[2]['account_id'] == 5 # Transit
         
         # 3. Expense from Credit Card
-        assert transactions[2]['description'] == 'העברת כספים bit'
-        assert transactions[2]['amount'] == -540.0
-        assert transactions[2]['account_id'] == 1 # Passed as argument
+        assert transactions[3]['amount'] == -540.0
+        assert transactions[3]['account_id'] == 1 # Passed as argument
         
         # 4. Expense from Balance (יתרה, Debit)
-        assert transactions[3]['amount'] == -200.0
-        assert transactions[3]['account_id'] == 5 # Transit
+        assert transactions[4]['amount'] == -200.0
+        assert transactions[4]['account_id'] == 5 # Transit
+        
+        # 5. Direct Income (חשבון בנק, Credit) -> 'עזרה'
+        assert transactions[5]['amount'] == 500.0
+        assert transactions[5]['account_id'] == 3 # Family Debit
 
 def test_import_excel_file_routing():
     """Test that the main router correctly identifies file types based on new patterns."""

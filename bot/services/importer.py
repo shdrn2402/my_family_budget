@@ -210,22 +210,46 @@ def parse_bit_csv(file_path, account_id):
             logger.warning(f"Could not parse Bit date: {raw_date}")
             continue
             
-        # Determine account and sign based on rules:
+        # Determine base sign based strictly on Credit/Debit column
+        base_amount = abs(amount_val) if credit_debit.lower() == 'credit' else -abs(amount_val)
+        
+        # Determine account and specific logic
         if payment_method == 'חשבון בנק':
-            # Withdrawal to bank account (from Transit)
-            target_account = 5 # Transit (Bit/Paybox)
-            amount = -abs(amount_val) # Expense from transit
-        elif payment_method == 'כרטיס אשראי':
-            # Expense from credit card
-            target_account = account_id
-            amount = -abs(amount_val)
-        elif payment_method == 'יתרה':
-            # Transit balance change
-            target_account = 5
-            if credit_debit.lower() == 'credit':
-                amount = abs(amount_val)
+            if desc.lower() == 'withdrawal to bank account' or 'withdrawal' in desc.lower():
+                # This is a transfer from Transit to Bank. We need two lines:
+                # 1. Expense from Transit
+                transactions.append({
+                    'date': date_obj,
+                    'amount': -abs(amount_val),
+                    'description': desc,
+                    'comment': from_to,
+                    'external_id': f"bit_{date_obj.strftime('%Y%m%d')}_5_{-abs(amount_val)}_{from_to}",
+                    'account_id': 5, # Transit
+                    'source_type': 'import_bit',
+                    'status': 'confirmed'
+                })
+                # 2. Income to Bank
+                transactions.append({
+                    'date': date_obj,
+                    'amount': abs(amount_val),
+                    'description': desc,
+                    'comment': from_to,
+                    'external_id': f"bit_{date_obj.strftime('%Y%m%d')}_3_{abs(amount_val)}_{from_to}",
+                    'account_id': 3, # Family Debit (Bank)
+                    'source_type': 'import_bit',
+                    'status': 'confirmed'
+                })
+                continue
             else:
-                amount = -abs(amount_val)
+                # Direct income/expense to Bank account
+                target_account = 3
+                amount = base_amount
+        elif payment_method == 'כרטיס אשראי':
+            target_account = account_id
+            amount = base_amount
+        elif payment_method == 'יתרה':
+            target_account = 5
+            amount = base_amount
         else:
             logger.warning(f"Unknown payment method in Bit CSV: {payment_method}")
             continue
