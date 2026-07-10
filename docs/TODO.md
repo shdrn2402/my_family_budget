@@ -140,22 +140,35 @@
 
 ---
 
-## 6. Fix Bit Wallet Transfer and Transaction Logic
-**Goal:** Correct the tracking logic for "Bit" transactions to account for direct credit card withdrawals and fix the "account not found" error when manually selecting the Bit account.
+## 6. Refactor Bit Wallet Tracking and Bit CSV Import
+**Goal:** Implement full support for Bit CSV statements, establish exact reconciliation between Bit and Bank/Credit Card statements, and enhance category mapping by treating the `description + comment` composite string as the unique key for `item_aliases`.
 
-**Context & Issues:**
-- Transactions labeled `העברה ב BIT בנה"פ` (Transfer in BIT Bank Hapoalim) are currently incorrectly processed as internal transfers. These are often actual expenses or incomes directly linked to Andrey's credit card.
-- Bank statement entries involving Bit represent either a transfer from the Bit app to the card, or an expense paid from the card via Bit.
-- The current wallet transfer logic only handles scenarios where funds are received on Bit and kept on the Bit balance for future spending (bypassing the bank account). These direct Bit-to-Bit transactions are not tracked automatically (in or out) and rely entirely on manual entry.
-- Attempting to manually specify "Bit" as the account currently results in an "Account not found" error.
+**Context:**
+- Bit acts both as a gateway for credit card payments and as a standalone wallet (transit account) holding a balance (`יתרה`).
+- We can export Bit statements as CSV. The Bit CSV contains detailed transaction information (recipient/sender name) but no categorization.
+- Bank/Credit Card statements only show an aggregated or generic description (e.g., `העברה ב BIT בנה"פ`).
 
-**Tasks:**
-- [ ] Fix the alias and account resolution logic so that specifying "Bit" as an account during manual entry works correctly without raising an "Account not found" error.
-- [ ] Adjust the statement parsing logic so that `העברה ב BIT בנה"פ` is not automatically treated as a transit/internal transfer if it represents an actual expense or income on the credit card.
-- [ ] Design and implement a workflow to properly track direct Bit-to-Bit balance transactions (money received and subsequently spent directly from the Bit wallet) to avoid untracked financial movements.
+### Phase A: Database and Categorization Refactoring
+- [x] **A1.** Modify `bot/database.py` in `save_transactions_bulk` to adjust the reconciliation logic:
+  - When matching Bank statement transactions, search for existing transactions where `amount` and `date` match AND `(status = 'pending' OR source_type = 'import_bit')`.
+  - When updating a matched transaction, append the original description into the `comment` field (this is already implemented), but preserve the original `category_id`.
+- [x] **A2.** Refactor the `item_aliases` structure and categorization logic in `bot/services/categorizer.py`:
+  - When adding or updating an alias, the dictionary key should be the composite string `description + ' ' + comment` (or just `description` if `comment` is empty).
+  - Modify `sync_category_by_alias` in `bot/database.py` to upsert using this composite key and update transactions matching both `description` and `comment`.
 
-**Alternative Proposed Architecture (To be discussed):**
-Instead of maintaining separate transit accounts for Bit/Paybox, consider completely eliminating them from the system:
-- **Card Transactions:** Treat any `העברה ב BIT בנה"פ` directly as a regular card expense or income. If it's a negative amount, it's just an expense from the credit card that needs categorization.
-- **Bit Balance (Electronic Cash):** Treat funds kept on the Bit balance as identical to physical Cash. A transfer received on Bit (not withdrawn) is recorded manually as "Income to Cash". A direct payment from the Bit balance is recorded manually as "Expense from Cash".
-- **Action Items if adopted:** Delete Bit/Paybox aliases, remove the "transit" check in statement parsing, and simplify manual entry logic to only use Card or Cash.
+### Phase B: Bit CSV Parser Implementation
+- [x] **B1.** Implement a new parser `bot/services/parsers/bit_parser.py` (or as a new function in `importer.py`):
+  - Function `parse_bit_csv(file_path: str, account_id: int) -> List[Dict]`.
+  - **Debit (`יתרה`):** Expense on `Transit (Bit/Paybox)` (ID: 5).
+  - **Credit (`יתרה`):** Income on `Transit (Bit/Paybox)` (ID: 5).
+  - **Withdrawal (`חשבון בנק`):** Internal Transfer from Transit (ID: 5) to Bank Account.
+  - **Debit (`כרטיס אשראי`):** Expense on the respective Credit Card (passed via `account_id`).
+  - Set `description` to the CSV `Description` column.
+  - Set `comment` to the CSV `From/To` column.
+  - Set `source_type` to `'import_bit'`.
+  - Set `status` to `'confirmed'` for all Bit CSV transactions.
+- [x] **B2.** Update `bot/handlers/imports.py` (or document handler) to detect Bit CSV files, map to the correct user's card (e.g., Andrey's or Katya's), and process the file using the new parser.
+
+### Phase C: Testing
+- [x] **C1.** Write tests for the Bit CSV parser validating the different transaction types (Credit Card, Balance Debit/Credit, Withdrawal).
+- [x] **C2.** Write tests for the reconciliation logic in `bot/database.py` to ensure that a transaction with `source_type = 'import_bit'` successfully receives the `external_id` from the Bank statement without duplicating.

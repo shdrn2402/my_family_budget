@@ -29,6 +29,7 @@ graph TD
 *   🎙 **Voice-to-Text Parsing:** Records expenses from voice messages by transcribing audio via Gemini 1.5 Flash, then maps details into structured transactions (item, account, amount, category).
 *   💬 **Smart Natural Language Entry:** Processes free-form text (e.g., *"spent 500 on coffee yesterday in cash and 2k on fuel with credit card"*) to log multiple transactions at once.
 *   ⏳ **Debounced Batch Statement Loading:** Groups multiple statement uploads (Excel/XLSX) sent in a single batch, processes them in one operation, and outputs a single aggregated report to avoid message spam.
+*   📊 **Bit Statement Import & Reconciliation:** Parses Bit CSV exports, matches/enriches existing bank and credit card statement transactions, and handles direct card expenses and transit balance movements without duplication.
 *   🗃 **Database-Level Alias Synchronization:** Uses a PostgreSQL trigger (`trg_update_item_alias`) on transaction category updates. Modifying a transaction's category automatically synchronizes or inserts the corresponding pattern in `item_aliases` to categorize future statements correctly.
 *   🤖 **Bilingual Interface:** Supports dynamic runtime localization (English/Russian) through a centralized translation system (`bot/texts.py`).
 *   🔒 **Access Control Whitelist:** Restricts access to predefined Telegram User IDs with granular admin flags (`is_admin`).
