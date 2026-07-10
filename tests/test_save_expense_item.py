@@ -67,7 +67,7 @@ async def test_save_expense_income():
         mock_get_type.return_value = 'card'
         
         with patch('bot.services.expense.get_text', side_effect=lambda key, lang, **kwargs: key):
-            mock_cursor.fetchone.return_value = {'id': 101}
+            mock_cursor.fetchone.side_effect = [{'parent_id': 1}, {'id': 101}]
             
             result = await save_expense_item(item, 12345, 'en', mock_conn, 'manual_text')
             

@@ -2,7 +2,21 @@ import pytest
 from datetime import date, timedelta
 from unittest.mock import AsyncMock, patch, MagicMock
 
-from bot.services.expense import parse_expense_message
+from bot.services.expense import parse_expense_message, resolve_amount_sign
+
+def test_resolve_amount_sign():
+    # 1. Income (parent_id=1) -> always positive
+    assert resolve_amount_sign(-100, 1) == 100
+    assert resolve_amount_sign(100, 1) == 100
+
+    # 2. Transfers (parent_id=2) -> preserve sign
+    assert resolve_amount_sign(100, 2) == 100
+    assert resolve_amount_sign(-100, 2) == -100
+
+    # 3. Expenses (any other parent_id) -> always negative
+    assert resolve_amount_sign(100, 3) == -100
+    assert resolve_amount_sign(-100, 3) == -100
+    assert resolve_amount_sign(100, None) == -100
 
 @pytest.mark.asyncio
 async def test_parse_expense_dates():

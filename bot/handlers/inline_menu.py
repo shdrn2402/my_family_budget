@@ -203,7 +203,14 @@ async def inline_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                         # Generate composite alias string
                         alias_name = f"{description} {comment}".strip()
                         
-                        new_amount = abs(current_amount) if cat_id_int in [11, 12, 13] else -abs(current_amount)
+                        # Fetch parent_id to resolve sign correctly
+                        await cur.execute("SELECT parent_id FROM categories WHERE id = %s", (cat_id_int,))
+                        cat_row = await cur.fetchone()
+                        parent_id = cat_row['parent_id'] if cat_row else None
+                        
+                        from bot.services.expense import resolve_amount_sign
+                        new_amount = resolve_amount_sign(current_amount, parent_id)
+                        
                         await cur.execute("UPDATE transactions SET category_id = %s, amount = %s WHERE id = %s", (cat_id_int, new_amount, tx_id))
                         
                 await conn.commit()

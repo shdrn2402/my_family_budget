@@ -15,8 +15,21 @@ def get_local_date() -> date:
     return datetime.now(tz).date()
 
 
-INCOME_CATEGORY_IDS = {11, 12, 13}
 INCOME_KEYWORDS = ['доход', 'зарплата', 'подработка', 'премия', 'плюс', 'income', 'salary']
+
+def resolve_amount_sign(amount: float, parent_id: int | None) -> float:
+    """
+    Determine the sign of the amount based on the category's parent.
+    parent_id 1 = Income (Always positive)
+    parent_id 2 = Transfer (Preserve original sign)
+    all others  = Expense (Always negative)
+    """
+    if parent_id == 1:
+        return abs(amount)
+    elif parent_id == 2:
+        return amount
+    else:
+        return -abs(amount)
 
 logger = logging.getLogger(__name__)
 
@@ -229,13 +242,21 @@ async def save_expense_item(item: dict, user_id: int, lang: str, conn: psycopg.A
         if abs(amount) > 150:
             return {"error": "card_limit_exceeded"}
         
-    is_income = False
-    if category_id in INCOME_CATEGORY_IDS:
-        is_income = True
-    elif any(word in item_name.split() for word in INCOME_KEYWORDS):
-        is_income = True
-        
-    db_amount = abs(amount) if is_income else -abs(amount)
+    parent_id = None
+    if category_id:
+        async with conn.cursor() as cur:
+            await cur.execute("SELECT parent_id FROM categories WHERE id = %s", (category_id,))
+            cat_row = await cur.fetchone()
+            if cat_row:
+                # `cat_row` might be a tuple or dict depending on row_factory, let's handle both safely
+                parent_id = cat_row[0] if isinstance(cat_row, tuple) else cat_row.get('parent_id')
+
+    # If it matched no category but has income keywords, fallback to Other Income (13)
+    if not category_id and any(word in item_name.split() for word in INCOME_KEYWORDS):
+        category_id = 13
+        parent_id = 1
+
+    db_amount = resolve_amount_sign(amount, parent_id)
     
     tx_date = item.get('date') or get_local_date().isoformat()
     
