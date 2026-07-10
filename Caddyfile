@@ -1,0 +1,3 @@
+my-family-budget.duckdns.org {
+    reverse_proxy pgadmin:80
+}

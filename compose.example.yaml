@@ -16,8 +16,6 @@ services:
       - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD}
     volumes:
       - "pgadmin_data:/var/lib/pgadmin"
-    ports:
-      - "8085:80"
     depends_on:
       - pgdatabase
     restart: unless-stopped
@@ -41,7 +39,23 @@ services:
       - pgdatabase
     restart: unless-stopped
 
+  caddy:
+    image: caddy:2.7-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "./Caddyfile:/etc/caddy/Caddyfile"
+      - "caddy_data:/data"
+      - "caddy_config:/config"
+    depends_on:
+      - pgadmin
+
+
 volumes:
   budget_postgres_data:
   pgadmin_data:
   telegram_data:
+  caddy_data:
+  caddy_config:
