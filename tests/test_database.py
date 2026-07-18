@@ -140,11 +140,13 @@ async def test_save_transactions_bulk_reconciliation():
         
     assert inserted == 1
     # Check that SELECT checked for both pending and import_bit
-    select_query = test_conn.cursor_obj.execute_calls[0][0]
+    # The first query is now 'SELECT id, owner_id FROM accounts;'
+    # The second query is the reconciliation check
+    select_query = test_conn.cursor_obj.execute_calls[1][0]
     assert "(status = 'pending' OR source_type = 'import_bit')" in select_query, "Must search for import_bit as well as pending"
     
     # Check that UPDATE statement updates external_id but DOES NOT overwrite category_id
-    update_query = test_conn.cursor_obj.execute_calls[1][0]
+    update_query = test_conn.cursor_obj.execute_calls[2][0]
     assert "category_id =" not in update_query, "Category ID must be preserved during reconciliation"
     assert "account_id =" not in update_query, "Account ID must be preserved from the Bit import"
     assert "description =" not in update_query, "Description must be preserved from the Bit import"

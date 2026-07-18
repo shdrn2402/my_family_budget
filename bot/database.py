@@ -150,6 +150,14 @@ async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg
         connection = conn or await get_db_connection()
         inserted_count = 0
         
+        # 1. Fetch all accounts and their owner_ids in one query
+        account_owners = {}
+        async with connection.cursor() as cur:
+            await cur.execute("SELECT id, owner_id FROM accounts;")
+            accounts_rows = await cur.fetchall()
+            for row in accounts_rows:
+                account_owners[row['id']] = row['owner_id']
+        
         async with connection.cursor() as cur:
             for tx in transactions:
                 # Try to find a matching pending manual transaction OR an import_bit transaction (ignoring account_id)
@@ -203,6 +211,11 @@ async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg
                         )
                     inserted_count += 1
                 else:
+                    # Resolve user_id based on account owner
+                    tx_user_id = account_owners.get(tx['account_id'])
+                    if tx_user_id is None:
+                        tx_user_id = user_id
+                        
                     # No match, insert as new
                     await cur.execute(
                         """
@@ -211,7 +224,7 @@ async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg
                         ON CONFLICT (external_id) DO NOTHING;
                         """,
                         (
-                            user_id,
+                            tx_user_id,
                             tx['account_id'],
                             tx.get('category_id'),
                             tx['amount'],

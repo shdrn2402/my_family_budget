@@ -71,7 +71,7 @@ async def test_document_handler_success():
         mock_backup.assert_called_once()
         
         # Verify parsing was called with our hint from caption
-        mock_import.assert_called_once_with("temp_imports/123_statement.xlsx", hint="isracard")
+        mock_import.assert_called_once_with("temp_imports/statement.xlsx", hint="isracard")
         
         # Verify save to db
         mock_save.assert_called_once()

@@ -142,9 +142,8 @@ async def process_batch(
     for doc in documents:
         file_id = doc['file_id']
         file_name = doc['file_name']
-        caption = doc['caption']
-        
-        file_path = os.path.join(temp_dir, f"{user_id}_{file_name}")
+        caption = doc.get('caption')
+        file_path = os.path.join(temp_dir, file_name)
         
         try:
             # Download file
