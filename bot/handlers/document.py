@@ -161,8 +161,8 @@ async def process_batch(
                     if max_date:
                         if isinstance(max_date, datetime):
                             max_date = max_date.date()
-                        # Only keep transactions that are newer than the max date
-                        transactions = [tx for tx in transactions if tx['date'].date() > max_date]
+                        # Only keep transactions that are newer than or equal to the max date
+                        transactions = [tx for tx in transactions if tx['date'].date() >= max_date]
             
             if not transactions:
                 failed_files.append((

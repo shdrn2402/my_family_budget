@@ -340,6 +340,7 @@ async def test_document_filters_old_bit_transactions():
     # transactions from parser
     transactions = [
         {'date': datetime.datetime(2026, 5, 1), 'amount': -10, 'source_type': 'import_bit', 'description': 'Old Tx', 'account_id': 1}, # Old
+        {'date': datetime.datetime(2026, 5, 5), 'amount': -15, 'source_type': 'import_bit', 'description': 'Same Day Tx', 'account_id': 1}, # Same Day
         {'date': datetime.datetime(2026, 5, 10), 'amount': -20, 'source_type': 'import_bit', 'description': 'New Tx', 'account_id': 1}, # New
     ]
 
@@ -361,8 +362,9 @@ async def test_document_filters_old_bit_transactions():
 
         mock_get_date.assert_called_once_with('import_bit')
         
-        # save_transactions_bulk should have been called with ONLY the new transaction
+        # save_transactions_bulk should have been called with the Same Day and New transaction
         mock_save.assert_called_once()
         saved_txs = mock_save.call_args[0][1]
-        assert len(saved_txs) == 1
-        assert saved_txs[0]['date'] == datetime.datetime(2026, 5, 10)
+        assert len(saved_txs) == 2
+        assert saved_txs[0]['date'] == datetime.datetime(2026, 5, 5)
+        assert saved_txs[1]['date'] == datetime.datetime(2026, 5, 10)
