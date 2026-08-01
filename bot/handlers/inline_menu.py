@@ -17,6 +17,9 @@ async def inline_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_lang = update.effective_user.language_code
     data = query.data
     
+    if data == "ignore":
+        return
+    
     try:
         # 1. History Pagination
         if data.startswith("hist_page:"):
@@ -161,18 +164,34 @@ async def inline_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             async with await get_db_connection() as conn:
                 async with conn.cursor(row_factory=dict_row) as cur:
                     await cur.execute("""
-                        SELECT id, name FROM categories c
+                        SELECT c.id, c.name, p.name as parent_name 
+                        FROM categories c
+                        JOIN categories p ON c.parent_id = p.id
                         WHERE NOT EXISTS (
                             SELECT 1 FROM categories sub
                             WHERE sub.parent_id = c.id
                         )
-                        ORDER BY id;
+                        ORDER BY p.id, c.id;
                     """)
                     categories = await cur.fetchall()
             
             keyboard = []
             row = []
+            current_parent = None
+            
             for cat in categories:
+                # get parent name
+                p_name_dict = cat['parent_name']
+                p_name = p_name_dict.get(lang, p_name_dict.get('ru', p_name_dict.get('en', 'Unknown')))
+                
+                if p_name != current_parent:
+                    if row:
+                        keyboard.append(row)
+                        row = []
+                    # Add parent separator
+                    keyboard.append([InlineKeyboardButton(f"--- {p_name.upper()} ---", callback_data="ignore")])
+                    current_parent = p_name
+                    
                 name_dict = cat['name']
                 cat_name = name_dict.get(lang, name_dict.get('ru', name_dict.get('en', 'Unknown')))
                 row.append(InlineKeyboardButton(cat_name, callback_data=f"save_cat:{tx_id}:{cat['id']}:{tx_ids_str}:{page}"))
