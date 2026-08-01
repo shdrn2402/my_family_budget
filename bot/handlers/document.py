@@ -39,7 +39,7 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
         
     file_name_lower = file_name.lower()
-    if not (file_name_lower.endswith('.xlsx') or file_name_lower.endswith('.xls')):
+    if not (file_name_lower.endswith('.xlsx') or file_name_lower.endswith('.xls') or file_name_lower.endswith('.csv')):
         await update.message.reply_text(
             get_text("import_invalid_extension", lang)
         )

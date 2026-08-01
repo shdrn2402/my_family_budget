@@ -80,6 +80,59 @@ async def test_document_handler_success():
         args, _ = status_msg.edit_text.call_args
         assert "✅" in args[0] or "успешно" in args[0].lower() or "завершен" in args[0].lower()
 
+@pytest.mark.asyncio
+async def test_document_handler_csv_success():
+    """Test successful document upload and parsing via Telegram for .csv files."""
+    if not document_handler:
+        pytest.fail("document_handler not implemented yet")
+        
+    update = MagicMock()
+    # Mock document
+    doc = MagicMock()
+    doc.file_name = "bit_transactions.csv"
+    doc.file_id = "file_124"
+    update.message.document = doc
+    
+    # Mock caption (user hint)
+    update.message.caption = "bit"
+    
+    # Mock user
+    update.effective_user.id = 123
+    update.effective_user.language_code = "ru"
+    
+    # Mock message replies
+    status_msg = MagicMock()
+    status_msg.edit_text = AsyncMock()
+    update.message.reply_text = AsyncMock(return_value=status_msg)
+    
+    # Context
+    context = MagicMock()
+    mock_file = AsyncMock()
+    mock_file.download_to_drive = AsyncMock(return_value="temp_path.csv")
+    context.bot.get_file = AsyncMock(return_value=mock_file)
+    
+    with patch("bot.handlers.document.import_excel_file") as mock_import, \
+         patch("bot.handlers.document.save_transactions_bulk") as mock_save, \
+         patch("bot.handlers.document.create_database_dump", new_callable=AsyncMock) as mock_backup, \
+         patch("bot.handlers.document.check_access", return_value=True), \
+         patch("bot.handlers.document.get_db_connection", side_effect=mock_get_db_conn), \
+         patch("bot.handlers.document.get_all_item_aliases", new_callable=AsyncMock) as mock_aliases, \
+         patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+         
+        # Mock parsing returning 1 transaction
+        mock_import.return_value = [{'date': '2026-05-06', 'amount': -10, 'description': 'Test Bit', 'account_id': 1}]
+        mock_save.return_value = 1
+        mock_backup.return_value = "/app/backups/db_backup_test.sql"
+        mock_aliases.return_value = {}
+        
+        await document_handler(update, context)
+        
+        assert 123 in DEBOUNCE_JOBS
+        task = DEBOUNCE_JOBS[123]['task']
+        await task
+        
+        mock_import.assert_called_once_with("temp_imports/bit_transactions.csv", hint="bit")
+
 
 @pytest.mark.asyncio
 async def test_document_handler_debounce_batch():
