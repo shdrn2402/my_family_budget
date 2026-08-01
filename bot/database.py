@@ -219,8 +219,8 @@ async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg
                     # No match, insert as new
                     await cur.execute(
                         """
-                        INSERT INTO transactions (user_id, account_id, category_id, amount, description, date, external_id, source_type, status)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'confirmed')
+                        INSERT INTO transactions (user_id, account_id, category_id, amount, description, comment, date, external_id, source_type, status)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'confirmed')
                         ON CONFLICT (external_id) DO NOTHING;
                         """,
                         (
@@ -229,9 +229,10 @@ async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg
                             tx.get('category_id'),
                             tx['amount'],
                             tx['description'],
+                            tx.get('comment'),
                             tx['date'],
                             tx['external_id'],
-                            'import_xls'
+                            tx.get('source_type', 'import_xls')
                         )
                     )
                     if cur.rowcount > 0:
