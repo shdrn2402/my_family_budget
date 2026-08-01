@@ -2,6 +2,7 @@ services:
   pgdatabase:
     image: postgres:18
     environment:
+      - TZ=Asia/Jerusalem
       - POSTGRES_DB=${DB_NAME}
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
@@ -12,6 +13,7 @@ services:
   pgadmin:
     image: dpage/pgadmin4:9.16
     environment:
+      - TZ=Asia/Jerusalem
       - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL}
       - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD}
     volumes:
@@ -24,6 +26,7 @@ services:
     image: ghcr.io/shdrn2402/my_family_budget/budget_bot:latest
     build: .
     environment:
+      - TZ=Asia/Jerusalem
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
       - ALLOWED_USER_IDS=${ALLOWED_USER_IDS}
       - DB_HOST=pgdatabase
