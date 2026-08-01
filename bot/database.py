@@ -165,7 +165,7 @@ async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg
                     """
                     SELECT id, source_type FROM transactions 
                     WHERE amount = %s 
-                      AND (status = 'pending' OR source_type = 'import_bit')
+                      AND (status = 'pending' OR source_type IN ('import_bit', 'import_xls'))
                       AND date BETWEEN %s::date - INTERVAL '3 days' AND %s::date + INTERVAL '3 days'
                     LIMIT 1
                     FOR UPDATE SKIP LOCKED;
@@ -175,30 +175,52 @@ async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg
                 match = await cur.fetchone()
 
                 if match:
-                    if match['source_type'] == 'import_bit':
-                        # Match found with Bit CSV! It's the source of truth for account, description, category.
-                        # We only attach the bank's external_id to prevent duplicates and append bank description to comment.
+                    if tx.get('source_type') == 'import_bit':
+                        # We are importing Bit. It matched an existing Isracard or Bit record.
+                        # We DO NOT want to overwrite an Isracard external_id with a Bit external_id.
+                        # We will only append the Bit comment if it's missing.
+                        await cur.execute(
+                            """
+                            UPDATE transactions 
+                            SET comment = CASE 
+                                            WHEN comment IS NOT NULL AND comment != '' AND comment NOT LIKE '%' || %s || '%' THEN comment || ', ' || %s 
+                                            WHEN comment IS NULL OR comment = '' THEN %s
+                                            ELSE comment 
+                                          END
+                            WHERE id = %s;
+                            """,
+                            (tx.get('comment', ''), tx.get('comment', ''), tx.get('comment', ''), match['id'])
+                        )
+                        inserted_count += 1
+                        
+                    elif match['source_type'] in ('import_bit', 'import_xls'):
+                        # We are importing Isracard (xls). It matched an existing Bit (or another xls).
+                        # Isracard is the source of truth for the bank statement, so we overwrite external_id and change source_type to import_xls.
                         await cur.execute(
                             """
                             UPDATE transactions 
                             SET external_id = %s,
+                                source_type = 'import_xls',
                                 comment = CASE 
-                                            WHEN comment IS NOT NULL AND comment != '' THEN comment || ', ' || %s 
-                                            ELSE %s 
+                                            WHEN comment IS NOT NULL AND comment != '' AND comment NOT LIKE '%' || %s || '%' THEN comment || ', ' || %s 
+                                            WHEN comment IS NULL OR comment = '' THEN %s
+                                            ELSE comment 
                                           END
                             WHERE id = %s;
                             """,
-                            (tx['external_id'], tx['description'], tx['description'], match['id'])
+                            (tx['external_id'], tx['description'], tx['description'], tx['description'], match['id'])
                         )
+                        inserted_count += 1
+                        
                     else:
-                        # Match found with manual pending! Update with bank details.
+                        # We are importing Isracard (xls) or Bit. It matched a manual pending record! Update with details.
                         await cur.execute(
                             """
                             UPDATE transactions 
                             SET status = 'confirmed', 
                                 external_id = %s, 
                                 date = %s, 
-                                source_type = 'import_xls',
+                                source_type = %s,
                                 account_id = %s,
                                 comment = CASE 
                                             WHEN comment IS NOT NULL AND comment != '' THEN description || ', ' || comment 
@@ -207,9 +229,9 @@ async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg
                                 description = %s
                             WHERE id = %s;
                             """,
-                            (tx['external_id'], tx['date'], tx['account_id'], tx['description'], match['id'])
+                            (tx['external_id'], tx['date'], tx.get('source_type', 'import_xls'), tx['account_id'], tx['description'], match['id'])
                         )
-                    inserted_count += 1
+                        inserted_count += 1
                 else:
                     # Resolve user_id based on account owner
                     tx_user_id = account_owners.get(tx['account_id'])

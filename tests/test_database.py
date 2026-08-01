@@ -143,7 +143,7 @@ async def test_save_transactions_bulk_reconciliation():
     # The first query is now 'SELECT id, owner_id FROM accounts;'
     # The second query is the reconciliation check
     select_query = test_conn.cursor_obj.execute_calls[1][0]
-    assert "(status = 'pending' OR source_type = 'import_bit')" in select_query, "Must search for import_bit as well as pending"
+    assert "(status = 'pending' OR source_type IN ('import_bit', 'import_xls'))" in select_query, "Must search for import_bit and import_xls as well as pending"
     
     # Check that UPDATE statement updates external_id but DOES NOT overwrite category_id
     update_query = test_conn.cursor_obj.execute_calls[2][0]
@@ -200,3 +200,40 @@ async def test_save_transactions_bulk_preserves_comment_and_source_type():
     assert "comment" in insert_query
     assert "Test Person" in insert_params
     assert "import_bit" in insert_params
+
+@pytest.mark.asyncio
+async def test_save_transactions_bulk_merges_bit_and_isracard():
+    """Test that Bit and Isracard overlap is correctly handled without duplication."""
+    from bot.database import save_transactions_bulk
+    
+    test_conn = MockConnection()
+    
+    # Simulate DB having an Isracard record (import_xls)
+    test_conn.cursor_obj.fetchone = AsyncMock(return_value={
+        'id': 100,
+        'source_type': 'import_xls'
+    })
+    
+    test_txs_bit = [{
+        'amount': -300.0,
+        'date': '2026-07-05',
+        'external_id': 'bit_123',
+        'account_id': 1,
+        'description': 'Bit Transfer',
+        'comment': 'Test Person',
+        'source_type': 'import_bit'
+    }]
+    
+    with patch("bot.database.get_db_connection", return_value=test_conn):
+        inserted = await save_transactions_bulk(999, test_txs_bit)
+        
+    assert inserted == 1
+    
+    # Check that UPDATE is executed, appending the comment but NOT overwriting external_id
+    update_query = test_conn.cursor_obj.execute_calls[2][0]
+    update_params = test_conn.cursor_obj.execute_calls[2][1]
+    
+    assert "UPDATE transactions" in update_query
+    assert "external_id =" not in update_query, "Must not overwrite Isracard external_id"
+    assert "comment = CASE" in update_query, "Must append comment"
+    assert "Test Person" in update_params
