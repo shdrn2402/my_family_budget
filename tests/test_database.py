@@ -237,3 +237,24 @@ async def test_save_transactions_bulk_merges_bit_and_isracard():
     assert "external_id =" not in update_query, "Must not overwrite Isracard external_id"
     assert "comment = CASE" in update_query, "Must append comment"
     assert "Test Person" in update_params
+
+@pytest.mark.asyncio
+async def test_get_latest_import_date():
+    """Test that get_latest_import_date returns the max date for a source."""
+    from bot.database import get_latest_import_date
+    import datetime
+    
+    test_conn = MockConnection()
+    expected_date = datetime.date(2026, 7, 5)
+    test_conn.cursor_obj.fetchone = AsyncMock(return_value={'max': expected_date})
+    
+    with patch("bot.database.get_db_connection", return_value=test_conn):
+        date = await get_latest_import_date('import_bit')
+        
+    assert date == expected_date
+    
+    select_query = test_conn.cursor_obj.execute_calls[0][0]
+    select_params = test_conn.cursor_obj.execute_calls[0][1]
+    
+    assert "SELECT MAX(date)" in select_query
+    assert "import_bit" in select_params

@@ -269,6 +269,26 @@ async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg
         logger.error(f"Database error in bulk save for user {user_id}: {e}")
         return 0
 
+async def get_latest_import_date(source_type, conn=None):
+    """
+    Returns the maximum date for a given source_type.
+    Used to filter out old transactions before bulk insert.
+    """
+    connection = conn or await get_db_connection()
+    try:
+        async with connection.cursor() as cur:
+            await cur.execute("SELECT MAX(date) FROM transactions WHERE source_type = %s;", (source_type,))
+            row = await cur.fetchone()
+            if row and row['max']:
+                return row['max']
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching latest import date for {source_type}: {e}")
+        return None
+    finally:
+        if conn is None:
+            await connection.close()
+
 async def sync_category_by_alias(alias_name, category_id, user_id, conn=None):
     """
     1. Adds/updates an alias in item_aliases (using composite alias_name).

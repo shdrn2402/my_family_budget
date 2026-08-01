@@ -308,3 +308,61 @@ async def test_document_internal_transfers():
         assert bit_rcpt_offsets[0]['amount'] == -70.0
         assert bit_rcpt_offsets[0]['account_id'] == 5
         assert bit_rcpt_offsets[0]['category_id'] == 15
+
+@pytest.mark.asyncio
+async def test_document_filters_old_bit_transactions():
+    """Test that older Bit transactions are filtered out and save_transactions_bulk is called correctly."""
+    from bot.handlers.document import document_handler, DEBOUNCE_JOBS
+    import datetime
+
+    if not document_handler:
+        pytest.fail("document_handler not implemented yet")
+
+    DEBOUNCE_JOBS.clear()
+
+    context = MagicMock()
+    mock_file = AsyncMock()
+    context.bot.get_file = AsyncMock(return_value=mock_file)
+
+    status_msg = MagicMock()
+    status_msg.edit_text = AsyncMock()
+
+    update = MagicMock()
+    update.effective_user.id = 123
+    update.effective_user.language_code = "ru"
+    doc = MagicMock()
+    doc.file_name = "bit_statement.csv"
+    doc.file_id = "file_1"
+    update.message.document = doc
+    update.message.caption = None
+    update.message.reply_text = AsyncMock(return_value=status_msg)
+
+    # transactions from parser
+    transactions = [
+        {'date': datetime.datetime(2026, 5, 1), 'amount': -10, 'source_type': 'import_bit', 'description': 'Old Tx', 'account_id': 1}, # Old
+        {'date': datetime.datetime(2026, 5, 10), 'amount': -20, 'source_type': 'import_bit', 'description': 'New Tx', 'account_id': 1}, # New
+    ]
+
+    with patch("bot.handlers.document.import_excel_file", return_value=transactions) as mock_import, \
+         patch("bot.handlers.document.save_transactions_bulk", return_value=1) as mock_save, \
+         patch("bot.handlers.document.create_database_dump", new_callable=AsyncMock) as mock_backup, \
+         patch("bot.handlers.document.check_access", return_value=True), \
+         patch("bot.handlers.document.get_db_connection"), \
+         patch("bot.handlers.document.get_latest_import_date", new_callable=AsyncMock) as mock_get_date, \
+         patch("bot.handlers.document.get_all_item_aliases", new_callable=AsyncMock) as mock_aliases:
+        
+        mock_aliases.return_value = {}
+        # Mock max date in DB to be May 5, 2026 (date object)
+        mock_get_date.return_value = datetime.date(2026, 5, 5)
+
+        await document_handler(update, context)
+        task = DEBOUNCE_JOBS[123]['task']
+        await task
+
+        mock_get_date.assert_called_once_with('import_bit')
+        
+        # save_transactions_bulk should have been called with ONLY the new transaction
+        mock_save.assert_called_once()
+        saved_txs = mock_save.call_args[0][1]
+        assert len(saved_txs) == 1
+        assert saved_txs[0]['date'] == datetime.datetime(2026, 5, 10)

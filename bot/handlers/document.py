@@ -1,10 +1,11 @@
 import logging
 import os
 import asyncio
+from datetime import datetime
 from telegram import Update, Message
 from telegram.ext import ContextTypes
 from bot.services.importer import import_excel_file
-from bot.database import save_transactions_bulk, get_db_connection, get_all_item_aliases
+from bot.database import save_transactions_bulk, get_db_connection, get_all_item_aliases, get_latest_import_date
 from bot.services.categorizer import auto_categorize
 from bot.handlers.common import check_access
 from bot.texts import get_text
@@ -152,10 +153,21 @@ async def process_batch(
             
             # Parse file
             transactions = import_excel_file(file_path, hint=caption)
+            
+            if transactions:
+                # Pre-filter for Bit statements based on latest DB date
+                if transactions[0].get('source_type') == 'import_bit':
+                    max_date = await get_latest_import_date('import_bit')
+                    if max_date:
+                        if isinstance(max_date, datetime):
+                            max_date = max_date.date()
+                        # Only keep transactions that are newer than the max date
+                        transactions = [tx for tx in transactions if tx['date'].date() > max_date]
+            
             if not transactions:
                 failed_files.append((
                     file_name,
-                    "No transactions recognized" if lang == 'en' else "Не удалось распознать структуру или данные"
+                    "Нет новых транзакций" if lang == 'ru' else "No new transactions"
                 ))
             else:
                 all_transactions.extend(transactions)
