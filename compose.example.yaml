@@ -6,22 +6,12 @@ services:
       - POSTGRES_DB=${DB_NAME}
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - "budget_postgres_data:/var/lib/postgresql"
     restart: unless-stopped
-
-  pgadmin:
-    image: dpage/pgadmin4:9.16
-    environment:
-      - TZ=Asia/Jerusalem
-      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL}
-      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD}
-    volumes:
-      - "pgadmin_data:/var/lib/pgadmin"
-    depends_on:
-      - pgdatabase
-    restart: unless-stopped
-
+    
   budget_bot:
     image: ghcr.io/shdrn2402/my_family_budget/budget_bot:latest
     build: .
@@ -42,23 +32,6 @@ services:
       - pgdatabase
     restart: unless-stopped
 
-  caddy:
-    image: caddy:2.7-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - "./Caddyfile:/etc/caddy/Caddyfile"
-      - "caddy_data:/data"
-      - "caddy_config:/config"
-    depends_on:
-      - pgadmin
-
-
 volumes:
   budget_postgres_data:
-  pgadmin_data:
   telegram_data:
-  caddy_data:
-  caddy_config:

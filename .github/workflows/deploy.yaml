@@ -121,7 +121,7 @@ jobs:
             docker compose pull budget_bot
             
             # Restart containers in detached mode
-            docker compose up -d
+            docker compose up -d --remove-orphans
             
             # Prune unused images to save disk space
             docker image prune -f
