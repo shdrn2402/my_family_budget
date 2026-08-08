@@ -1,0 +1,62 @@
+---
+description: Project architecture and file structure overview
+globs: *
+---
+# Project Architecture and Structure
+
+**Target Audience:** AI Coding Agents and Human Developers.
+**Purpose:** Provides a high-level map of the project to help agents navigate the codebase efficiently without scanning everything.
+
+## 1. High-Level Folder Structure
+
+The root directory of the project `/home/shdrn/dev/my_family_budget` contains the following key folders:
+
+*   **`bot/`**: The core application logic. Contains everything related to the Telegram bot, database connections, and external API integrations.
+*   **`tests/`**: Contains all unit and integration tests. (Driven by `tdd_workflow.mdc`).
+*   **`scripts/`**: Utility scripts (e.g., database migrations, ad-hoc jobs, or data reconciliation scripts).
+*   **`data/`**, **`docs/`**: Project documentation, design proposals, and static data.
+*   **`backups/`**, **`bank_statements/`**, **`logs/`**, **`temp_imports/`**: Directories used dynamically by the application for state, file processing, or logging.
+
+## 2. Deep Dive: `bot/` Directory
+
+This project enforces a strict Separation of Concerns (as per `coding_standards.mdc`). The `bot/` directory is structured to reflect this:
+
+### 2.1 Core Files
+*   `bot/main.py`: The entry point of the application. Initializes the bot, dispatcher, and starts polling/webhooks.
+*   `bot/database.py`: Contains ALL raw database interactions and SQL queries (via `asyncpg`).
+*   `bot/config.py`: Environment variable loading and configuration management.
+*   `bot/texts.py`: The single source of truth for user-facing strings and translations (Russian UI). Do NOT hardcode UI text in handlers.
+
+### 2.2 `bot/handlers/`
+This folder contains Telegram interaction logic. **Handlers must remain "thin"** and delegate heavy work to `services/`.
+*   `common.py`: Standard commands (e.g., /start, /help).
+*   `expense.py`: Text-based expense input handling.
+*   `voice.py`: Voice message processing handlers.
+*   `document.py`: Document/file upload handlers (e.g., bank statements).
+*   `inline_menu.py`: Callback queries and interactive UI button handlers.
+*   `admin.py`: Administrative commands.
+*   `errors.py`: Global error handling logic (fails softly and logs).
+
+### 2.3 `bot/services/`
+This folder contains the core **business logic** and integrations.
+*   `llm.py`: Interaction with Gemini/LLM for natural language processing.
+*   `categorizer.py`: Logic for mapping expenses to budget categories.
+*   `expense.py`: Complex expense processing pipelines.
+*   `importer.py`: Logic for parsing CSV/PDF bank statements.
+*   `voice.py`: Speech-to-text processing logic.
+*   `backup.py`: Automated backup orchestration.
+
+## 3. Data Flow Example (New Expense via Text)
+
+1.  **User sends text:** "Купил кофе за 200 рублей нал"
+2.  **Handler (`bot/handlers/expense.py`):** Catches the message.
+3.  **Service (`bot/services/llm.py`):** Parses the raw text into structured data (amount, category, date, account).
+4.  **Database (`bot/database.py`):** Executes the SQL `INSERT` statement.
+5.  **Texts (`bot/texts.py`):** Retrieves the success message template.
+6.  **Handler (`bot/handlers/expense.py`):** Sends the success message back to the user.
+
+## 4. Architectural Rules for Agents
+
+*   **Look here first:** If asked to add a new command, start in `bot/handlers/`. If asked to change how data is parsed, go to `bot/services/`.
+*   **No DB calls in handlers:** Never write SQL inside `bot/handlers/`. Always use functions from `bot/database.py`.
+*   **Respect tests:** Before modifying `bot/services/`, ensure you review or write tests in the `tests/` directory.
