@@ -160,17 +160,20 @@ async def save_transactions_bulk(user_id: int, transactions: list, conn: psycopg
         
         async with connection.cursor() as cur:
             for tx in transactions:
-                # Try to find a matching pending manual transaction OR an import_bit transaction (ignoring account_id)
+                current_source = tx.get('source_type', 'import_xls')
+                target_sources = ['import_xls'] if current_source == 'import_bit' else ['import_bit']
+
+                # Try to find a matching pending manual transaction OR a cross-system transaction (ignoring account_id)
                 await cur.execute(
                     """
                     SELECT id, source_type FROM transactions 
                     WHERE amount = %s 
-                      AND (status = 'pending' OR source_type IN ('import_bit', 'import_xls'))
+                      AND (status = 'pending' OR source_type = ANY(%s))
                       AND date BETWEEN %s::date - INTERVAL '3 days' AND %s::date + INTERVAL '3 days'
                     LIMIT 1
                     FOR UPDATE SKIP LOCKED;
                     """,
-                    (tx['amount'], tx['date'], tx['date'])
+                    (tx['amount'], target_sources, tx['date'], tx['date'])
                 )
                 match = await cur.fetchone()
 

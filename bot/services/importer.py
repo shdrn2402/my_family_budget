@@ -60,7 +60,7 @@ def parse_leumi(file_path):
             'description': desc,
             'external_id': f"leumi_{row.get('Reference', 'no_ref')}_{date_obj.strftime('%Y%m%d')}_{amount}",
             'account_id': 3, # Family Debit
-            'source_type': 'import'
+            'source_type': 'import_xls'
         })
         
     return transactions
@@ -124,7 +124,7 @@ def parse_isracard(file_path, account_id=2):
                         'description': desc,
                         'external_id': f"isracard_{voucher}",
                         'account_id': account_id,
-                        'source_type': 'import'
+                        'source_type': 'import_xls'
                     })
                 except Exception as e:
                     # logger.debug(f"Row {j} is not a valid transaction: {e}")

@@ -34,7 +34,7 @@ def test_parse_leumi_success():
         assert transactions[0]['description'] == 'SUPERMARKET'
         assert transactions[0]['amount'] == -100.0
         assert transactions[0]['account_id'] == 3 # Debit
-        assert transactions[0]['source_type'] == 'import'
+        assert transactions[0]['source_type'] == 'import_xls'
         
         # Verify REFUND
         assert transactions[1]['description'] == 'REFUND'

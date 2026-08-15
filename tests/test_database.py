@@ -143,7 +143,7 @@ async def test_save_transactions_bulk_reconciliation():
     # The first query is now 'SELECT id, owner_id FROM accounts;'
     # The second query is the reconciliation check
     select_query = test_conn.cursor_obj.execute_calls[1][0]
-    assert "(status = 'pending' OR source_type IN ('import_bit', 'import_xls'))" in select_query, "Must search for import_bit and import_xls as well as pending"
+    assert "(status = 'pending' OR source_type = ANY(%s))" in select_query, "Must search for specific target sources as well as pending"
     
     # Check that UPDATE statement updates external_id but DOES NOT overwrite category_id
     update_query = test_conn.cursor_obj.execute_calls[2][0]
