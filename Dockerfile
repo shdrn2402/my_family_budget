@@ -10,8 +10,8 @@ RUN groupadd -r budget_group && useradd -r -g budget_group --no-create-home --sh
 # Set working directory
 WORKDIR /app
 
-# Create log directory and immediately give ownership to the non-privileged user
-RUN mkdir /logs && chown budget_user:budget_group /logs
+# Create log and backup directories and give ownership to the non-privileged user
+RUN mkdir -p /logs /app/backups && chown -R budget_user:budget_group /logs /app/backups
 
 # Add virtual environment to PATH so we can use installed packages
 ENV PATH="/app/.venv/bin:$PATH" \
