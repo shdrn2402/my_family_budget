@@ -27,7 +27,7 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
     volumes:
       - "telegram_data:/logs"
-      - "./backups:/app/backups:rw"
+      - "db_backups:/app/backups:rw"
     depends_on:
       - pgdatabase
     restart: unless-stopped
@@ -35,3 +35,4 @@ services:
 volumes:
   budget_postgres_data:
   telegram_data:
+  db_backups:
